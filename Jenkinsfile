@@ -32,6 +32,11 @@ pipeline {
                 echo 'Post-processing...'
             }
         }
+        stage  ('Archice') {
+            steps {
+                echo 'Archiving...'
+            }
+        }
     }
     post {
         success {
