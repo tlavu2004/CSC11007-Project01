@@ -22,5 +22,10 @@ pipeline {
                 echo 'Cleaning up...'
             }
         }
+        stage('Notify') {
+            steps {
+                echo 'Notifying...'
+            }
+        }
     }
 }
