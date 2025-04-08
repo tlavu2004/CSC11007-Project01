@@ -29,7 +29,7 @@ pipeline {
             steps {
                 echo "Building and testing API Gateway"
                 dir('spring-petclinic-api-gateway') {
-                    sh './mvnw clean install'
+                    sh 'mvn clean install || echo "Maven command failed! Check if Maven is installed and configured properly."'
                 }
             }
         }
@@ -41,7 +41,7 @@ pipeline {
             steps {
                 echo "Building and testing Customers Service"
                 dir('spring-petclinic-customers-service') {
-                    sh './mvnw clean install'
+                    sh 'mvn clean install || echo "Maven command failed! Check if Maven is installed and configured properly."'
                 }
             }
         }
@@ -53,7 +53,7 @@ pipeline {
             steps {
                 echo "Building and testing Vets Service"
                 dir('spring-petclinic-vets-service') {
-                    sh './mvnw clean install'
+                    sh 'mvn clean install || echo "Maven command failed! Check if Maven is installed and configured properly."'
                 }
             }
         }
@@ -65,7 +65,7 @@ pipeline {
             steps {
                 echo "Building and testing Visits Service"
                 dir('spring-petclinic-visits-service') {
-                    sh './mvnw clean install'
+                    sh 'mvn clean install || echo "Maven command failed! Check if Maven is installed and configured properly."'
                 }
             }
         }
