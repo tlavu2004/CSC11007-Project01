@@ -28,5 +28,10 @@ pipeline {
                 echo 'Notifying...'
             }
         }
+        stage('Post') {
+            steps {
+                echo 'Post-processing...'
+            }
+        }
     }
 }
