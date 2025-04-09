@@ -38,12 +38,4 @@ pipeline {
             }
         }
     }
-    post {
-        success {
-            githubNotify context: 'CI', status: 'SUCCESS', description: 'Build passed!'
-        }
-        failure {
-            githubNotify context: 'CI', status: 'FAILURE', description: 'Build failed!'
-        }
-    }
 }
