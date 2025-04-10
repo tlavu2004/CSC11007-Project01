@@ -11,6 +11,7 @@ pipeline {
             spring-petclinic-vets-service
             spring-petclinic-visits-service
         """
+    }
     stages {
         stage ("Checkout") {
             steps {
