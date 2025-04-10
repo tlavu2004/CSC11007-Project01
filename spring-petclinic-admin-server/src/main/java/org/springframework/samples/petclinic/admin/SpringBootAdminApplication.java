@@ -29,3 +29,10 @@ public class SpringBootAdminApplication {
     }
 
 }
+// const springBootAdminApplication = {
+//   name: 'Spring Boot Admin Application',
+//   description: 'Spring Boot Admin Application',
+//   url: 'http://localhost:8080/spring-boot-admin/',
+//   tags: ['spring', 'boot', 'admin'],
+//   icon: 'https://raw.githubusercontent.com/spring-projects/spring-petclinic/main/spring-petclinic-admin-server/src/main/resources/static/favicon.ico'
+// }

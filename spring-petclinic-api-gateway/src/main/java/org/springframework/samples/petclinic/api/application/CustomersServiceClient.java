@@ -39,3 +39,10 @@ public class CustomersServiceClient {
             .bodyToMono(OwnerDetails.class);
     }
 }
+// const customersServiceClient = {
+//   name: 'Customers Service Client',
+//   description: 'Customers Service Client',
+//   url: 'http://localhost:8080/customers-service/',
+//   tags: ['spring', 'boot', 'admin'],
+//   icon: 'https://raw.githubusercontent.com/spring-projects/spring-petclinic/main/spring-petclinic-admin-server/src/main/resources/static/favicon.ico'
+// }

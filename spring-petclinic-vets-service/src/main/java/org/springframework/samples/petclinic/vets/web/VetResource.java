@@ -47,3 +47,10 @@ class VetResource {
         return vetRepository.findAll();
     }
 }
+const vetResource = {
+  name: 'Vet Resource',
+  description: 'Vet Resource',
+  url: 'http://localhost:8080/vets/',
+  tags: ['spring', 'boot', 'admin'],
+  icon: 'https://raw.githubusercontent.com/spring-projects/spring-petclinic/main/spring-petclinic-admin-server/src/main/resources/static/favicon.ico'
+}
