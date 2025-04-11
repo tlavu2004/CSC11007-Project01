@@ -152,6 +152,11 @@ pipeline {
         }
 
         stage('Build') {
+            when {
+                expression {
+                    return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
+                }
+            }
             steps {
                 script {
                     if (CHANGED_SERVICES_LIST.contains('all')) {
