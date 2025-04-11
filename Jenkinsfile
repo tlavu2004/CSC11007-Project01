@@ -32,15 +32,11 @@ pipeline {
                     def changes = sh(script: "git diff --name-only origin/main HEAD", returnStdout: true).trim().split("\n")
                     echo "Changed files: ${changes}"
 
-                    def serviceMap = SERVICES.split().collectEntries {
-                        def key = it.trim()
-                        def shortName = key.replace('spring-petclinic-', '').replace('-service', '')
-                        [(key): shortName]
-                    }
+                    def allServices = SERVICES.split().collect { it.trim() }
 
-                    def changedServices = serviceMap.findAll { entry ->
-                        changes.any { it.contains(entry.key) }
-                    }.collect { it.value }
+                    def changedServices = allServices.findAll { service ->
+                        changes.any { it.contains(service) }
+                    }
 
                     if (changedServices.isEmpty()) {
                         changedServices = ['all']
@@ -52,48 +48,48 @@ pipeline {
             }
         }
 
-        // stage('Check Code Coverage') {
-        //     steps {
-        //         script {
-        //             def coverageThreshold = 70.0
-        //             def failedServices = []
+        stage('Check Code Coverage') {
+            steps {
+                script {
+                    def coverageThreshold = 70.0
+                    def failedServices = []
 
-        //             def changedList = env.CHANGED_SERVICES.split(',')
+                    def changedList = env.CHANGED_SERVICES.split(',')
 
-        //             changedList.each { service ->
-        //                 if (service in ['customers', 'visits', 'vets']) {
-        //                     def coverageReport = "spring-petclinic-${service}-service/target/site/jacoco/jacoco.xml"
+                    changedList.each { service ->
+                        if (service.contains('customers') || service.contains('visits') || service.contains('vets')) {
+                            def coverageReport = "${service}/target/site/jacoco/jacoco.xml"
 
-        //                     def lineCoverage = sh(script: """
-        //                         if [ -f ${coverageReport} ]; then
-        //                             awk '
-        //                                 /<counter type="LINE"[^>]*missed=/ {
-        //                                     split(\$0, a, "[ \\\"=]+");
-        //                                     missed = a[2];
-        //                                     covered = a[4];
-        //                                     sum = missed + covered;
-        //                                     coverage = (sum > 0 ? (covered / sum) * 100 : 0);
-        //                                     print coverage;
-        //                                 }
-        //                             ' ${coverageReport}
-        //                         else
-        //                             echo "0"
-        //                         fi
-        //                     """, returnStdout: true).trim()
+                            def lineCoverage = sh(script: """
+                                if [ -f ${coverageReport} ]; then
+                                    awk '
+                                        /<counter type="LINE"[^>]*missed=/ {
+                                            split(\$0, a, "[ \\\"=]+");
+                                            missed = a[2];
+                                            covered = a[4];
+                                            sum = missed + covered;
+                                            coverage = (sum > 0 ? (covered / sum) * 100 : 0);
+                                            print coverage;
+                                        }
+                                    ' ${coverageReport}
+                                else
+                                    echo "0"
+                                fi
+                            """, returnStdout: true).trim()
 
-        //                     echo "Code coverage for ${service}: ${lineCoverage}%"
-        //                     if (lineCoverage.toDouble() < coverageThreshold) {
-        //                         failedServices.add(service)
-        //                     }
-        //                 }
-        //             }
+                            echo "Code coverage for ${service}: ${lineCoverage}%"
+                            if (lineCoverage.toDouble() < coverageThreshold) {
+                                failedServices.add(service)
+                            }
+                        }
+                    }
 
-        //             if (!failedServices.isEmpty()) {
-        //                 error "The following services failed code coverage threshold (${coverageThreshold}%): ${failedServices.join(', ')}"
-        //             }
-        //         }
-        //     }
-        // }
+                    if (!failedServices.isEmpty()) {
+                        error "The following services failed code coverage threshold (${coverageThreshold}%): ${failedServices.join(', ')}"
+                    }
+                }
+            }
+        }
 
         stage('Build') {
             steps {
@@ -136,10 +132,10 @@ pipeline {
                             jacocoPattern = '**/jacoco.exec'
                         } else {
                             testPattern = changed.collect {
-                                "spring-petclinic-${it}-service/target/surefire-reports/TEST-*.xml"
+                                "${it}/target/surefire-reports/TEST-*.xml"
                             }.join(',')
                             jacocoPattern = changed.collect {
-                                "spring-petclinic-${it}-service/target/jacoco.exec"
+                                "${it}/target/jacoco.exec"
                             }.join(',')
                         }
 
@@ -156,8 +152,8 @@ pipeline {
                         if (jacocoFiles) {
                             jacoco(
                                 execPattern: jacocoPattern,
-                                classPattern: changed.contains('all') ? '**/target/classes' : changed.collect { "spring-petclinic-${it}-service/target/classes" }.join(','),
-                                sourcePattern: changed.contains('all') ? '**/src/main/java' : changed.collect { "spring-petclinic-${it}-service/src/main/java" }.join(',')
+                                classPattern: changed.contains('all') ? '**/target/classes' : changed.collect { "${it}/target/classes" }.join(','),
+                                sourcePattern: changed.contains('all') ? '**/src/main/java' : changed.collect { "${it}/src/main/java" }.join(',')
                             )
                         } else {
                             echo "No jacoco files found."
