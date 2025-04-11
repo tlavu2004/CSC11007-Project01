@@ -1,4 +1,5 @@
 pipeline {
+
     agent any
 
     environment {
@@ -60,9 +61,10 @@ pipeline {
                 script {
                     def services = env.CHANGED_SERVICES.split(',')
                     for (service in services) {
-                        echo "🧪 Testing: ${service}"
+                        echo "Testing: ${service}"
 
                         sh "./mvnw -pl ${svc} -am clean verify"
+                    }
                 }
             }
             post {
