@@ -39,7 +39,9 @@ pipeline {
                     }
 
                     if (changedServices.isEmpty()) {
-                        changedServices = ['all']
+                        echo "No service changes detected. Skipping build."
+                        currentBuild.result = 'SUCCESS'
+                        return
                     }
 
                     echo "Detected changed services: ${changedServices}"
@@ -49,16 +51,16 @@ pipeline {
         }
 
         stage('Test') {
+            when {
+                expression {
+                    return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
+                }
+            }
             steps {
                 script {
                     def modules = env.CHANGED_SERVICES
-                    if (modules.contains('all')) {
-                        echo "Testing all modules"
-                        sh './mvnw clean test'
-                    } else {
-                        echo "Testing modules: ${modules}"
-                        sh "./mvnw clean test -pl ${modules}"
-                    }
+                    echo "Testing modules: ${modules}"
+                    sh "./mvnw clean test -pl ${modules} -am clean verify"
                 }
             }
             post {
