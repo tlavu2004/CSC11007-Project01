@@ -47,3 +47,8 @@ class VetResource {
         return vetRepository.findAll();
     }
 }
+// public class VetResource_UT {
+//     public static void main(String[] args) {
+//         System.out.println("Hello World");
+//     }
+// }

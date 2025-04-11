@@ -29,3 +29,8 @@ public class SpringBootAdminApplication {
     }
 
 }
+public class SpringBootAdminApplication_UT {
+    public static void main(String[] args) {
+        SpringApplication.run(SpringBootAdminApplication.class, args);
+    }
+}
