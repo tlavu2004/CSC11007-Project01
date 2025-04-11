@@ -1,59 +1,89 @@
 pipeline {
     agent any
 
+    triggers {
+        githubPush()  // Nhận sự kiện push từ GitHub
+    }
+
     environment {
+        CURRENT_BRANCH = "${env.BRANCH_NAME}"
+        CHANGED_SERVICES = "customer-service,vets-service,visits-service"
         MAVEN_OPTS = "-Dmaven.test.failure.ignore=false"
     }
 
     stages {
-        stage('Checkout - Customer Service') {
+        stage('Info') {
             steps {
-                checkout scm
+                echo "🔎 Running pipeline on branch: ${env.BRANCH_NAME}"
             }
         }
 
-        stage('Build & Test - Customer Service') {
+        stage('Build') {
             steps {
-                sh './mvnw clean verify'
+                echo "🔨 Building project on ${env.BRANCH_NAME}"
+                // Thêm build thật nếu cần
+                // sh './mvnw clean install'
             }
         }
 
-        stage('Publish JaCoCo Report - Customer') {
-            steps {
-                jacoco(
-                    execPattern: '**/target/jacoco.exec',
-                    classPattern: '**/target/classes',
-                    sourcePattern: '**/src/main/java'
-                )
-            }
-        }
-
-        stage('Check Code Coverage - Customer') {
+        stage('Test & Coverage per Service') {
             steps {
                 script {
-                    def coverage = jacoco()
-                    def coverageRatio = coverage.instructionCoverage?.ratio ?: 0
-                    echo "📊 Coverage (Customer): ${coverageRatio * 100}%"
+                    def services = CHANGED_SERVICES.split(',')
+                    for (svc in services) {
+                        echo "🚀 Testing service: ${svc}"
 
-                    if (coverageRatio < 0.70) {
-                        error "❌ Build FAIL: Test coverage của customer-service thấp hơn 70%!"
+                        // Chạy test và sinh coverage
+                        sh "./mvnw -pl ${svc} -am clean verify"
+
+                        // Publish unit test result
+                        junit "**/${svc}/target/surefire-reports/*.xml"
+
+                        // Đọc file coverage XML
+                        def coverageFile = "${svc}/target/site/jacoco/jacoco.xml"
+                        def coverageXml = readFile(coverageFile)
+
+                        // Trích xuất và tính coverage %
+                        def matcher = coverageXml =~ /<counter type="INSTRUCTION" missed="(\\d+)" covered="(\\d+)"\\/>/
+                        if (matcher.find()) {
+                            def missed = matcher[0][1].toInteger()
+                            def covered = matcher[0][2].toInteger()
+                            def total = missed + covered
+                            def ratio = covered / total
+
+                            echo "📊 Coverage của ${svc}: ${(ratio * 100).round(2)}%"
+
+                            if (ratio < 0.70) {
+                                error "⛔ Build FAIL: Coverage của ${svc} thấp hơn 70%!"
+                            }
+                        } else {
+                            error "Không tìm thấy dữ liệu coverage trong ${coverageFile}"
+                        }
+
+                        // Lưu báo cáo coverage HTML
+                        archiveArtifacts artifacts: "${svc}/target/site/jacoco/index.html", fingerprint: true
                     }
                 }
+            }
+        }
+
+        stage('Deploy') {
+            when {
+                branch 'main'
+            }
+            steps {
+                echo "🚀 Deploying production build from ${env.BRANCH_NAME}"
+                // sh './deploy.sh'
             }
         }
     }
 
     post {
-        always {
-            archiveArtifacts artifacts: '**/target/site/jacoco/index.html', fingerprint: true
-        }
-
-        failure {
-            echo '❌ Build customer-service thất bại: coverage chưa đạt yêu cầu hoặc test lỗi.'
-        }
-
         success {
-            echo '✅ Build customer-service thành công với coverage >= 70%'
+            echo "✅ Build & test succeeded on branch: ${env.BRANCH_NAME}"
+        }
+        failure {
+            echo "❌ Build or test failed on branch: ${env.BRANCH_NAME}"
         }
     }
 }
