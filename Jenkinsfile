@@ -44,10 +44,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Build & test succeeded on branch: ${env.BRANCH_NAME}"
+            echo "Build & test succeeded on branch: ${env.BRANCH_NAME}"
         }
         failure {
-            echo "❌ Build or test failed on branch: ${env.BRANCH_NAME}"
+            echo "Build or test failed on branch: ${env.BRANCH_NAME}"
         }
     }
 }
