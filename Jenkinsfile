@@ -59,17 +59,17 @@ pipeline {
                         def coverageReport = "${service}/target/site/jacoco/jacoco.xml"
 
                         def lineCoverage = sh(script: """
-                            if [ -f ${coverageReport} ]; then
+                            if [ -f "${coverageReport}" ]; then
                                 awk '
                                     /<counter type="LINE"[^>]*missed=/ {
-                                        split(\\$0, a, "[ \\\"=]+");
+                                        split(\$0, a, "[ \\\"=]+");
                                         missed = a[2];
                                         covered = a[4];
                                         sum = missed + covered;
                                         coverage = (sum > 0 ? (covered / sum) * 100 : 0);
                                         print coverage;
                                     }
-                                ' ${coverageReport}
+                                ' "${coverageReport}"
                             else
                                 echo "0"
                             fi
@@ -87,7 +87,7 @@ pipeline {
                 }
             }
         }   
-        
+
         stage('Build') {
             steps {
                 script {
