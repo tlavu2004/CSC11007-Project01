@@ -2,12 +2,10 @@ pipeline {
     agent any
 
     triggers {
-        githubPush()  // Thêm trigger này để nhận sự kiện từ GitHub
-        genericWebhookTrigger('.*') // Thêm trigger này để nhận sự kiện từ GitHub
+        githubPush()  // Nhận sự kiện push từ GitHub
     }
 
     environment {
-        // Bạn có thể thêm biến môi trường ở đây nếu cần
         CURRENT_BRANCH = "${env.BRANCH_NAME}"
     }
 
@@ -15,31 +13,32 @@ pipeline {
         stage('Info') {
             steps {
                 echo "Running pipeline on branch: ${env.BRANCH_NAME}"
+                githubNotify context: 'CI', status: 'PENDING', description: 'Pipeline started'
             }
         }
 
         stage('Build') {
             steps {
                 echo "Building project on ${env.BRANCH_NAME}"
-                // Thêm lệnh build thật ở đây, ví dụ: ./mvnw clean install
+                // Thêm build thật nếu cần
+                // sh './mvnw clean install'
             }
         }
 
         stage('Test') {
             steps {
                 echo "Running tests on ${env.BRANCH_NAME}"
-                // ./mvnw test
+                // sh './mvnw test'
             }
         }
 
-        // Có thể thêm logic tùy nhánh
         stage('Deploy') {
             when {
                 branch 'main'
             }
             steps {
                 echo "Deploying production build!"
-                // Lệnh deploy thực tế
+                // sh './deploy.sh'
             }
         }
     }
@@ -47,9 +46,11 @@ pipeline {
     post {
         success {
             echo "Build & test succeeded on branch: ${env.BRANCH_NAME}"
+            githubNotify context: 'CI', status: 'SUCCESS', description: 'All checks passed'
         }
         failure {
             echo "Build or test failed on branch: ${env.BRANCH_NAME}"
+            githubNotify context: 'CI', status: 'FAILURE', description: 'Checks failed'
         }
     }
 }
