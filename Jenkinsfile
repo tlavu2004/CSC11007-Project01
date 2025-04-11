@@ -20,14 +20,22 @@ pipeline {
             steps {
                 echo "Building project on ${env.BRANCH_NAME}"
                 // Thêm build thật nếu cần
-                // sh './mvnw clean install'
+                sh './mvnw clean install'  // Cấu hình Maven build
             }
         }
 
         stage('Test') {
             steps {
                 echo "Running tests on ${env.BRANCH_NAME}"
-                // sh './mvnw test'
+                sh './mvnw test'  // Chạy các bài test
+            }
+        }
+
+        stage('Jacoco Coverage Report') {
+            steps {
+                echo "Generating Jacoco coverage report"
+                // Thêm bước để tạo báo cáo Jacoco
+                sh './mvnw jacoco:report'
             }
         }
 
