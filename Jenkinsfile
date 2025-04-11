@@ -13,7 +13,13 @@ pipeline {
         stage('Info') {
             steps {
                 echo "Running pipeline on branch: ${env.BRANCH_NAME}"
-                githubNotify context: 'CI', status: 'PENDING', description: 'Pipeline started'
+                script {
+                    githubChecks(
+                        name: 'CI',
+                        status: 'PENDING',
+                        description: 'Pipeline started'
+                    )
+                }
             }
         }
 
@@ -45,12 +51,24 @@ pipeline {
 
     post {
         success {
-            echo "Build & test succeeded on branch: ${env.BRANCH_NAME}"
-            githubNotify context: 'CI', status: 'SUCCESS', description: 'All checks passed'
+            echo "✅ Build & test succeeded on branch: ${env.BRANCH_NAME}"
+            script {
+                githubChecks(
+                    name: 'CI',
+                    status: 'SUCCESS',
+                    description: 'All checks passed'
+                )
+            }
         }
         failure {
-            echo "Build or test failed on branch: ${env.BRANCH_NAME}"
-            githubNotify context: 'CI', status: 'FAILURE', description: 'Checks failed'
+            echo "❌ Build or test failed on branch: ${env.BRANCH_NAME}"
+            script {
+                githubChecks(
+                    name: 'CI',
+                    status: 'FAILURE',
+                    description: 'Checks failed'
+                )
+            }
         }
     }
 }
