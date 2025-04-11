@@ -63,7 +63,7 @@ pipeline {
                     for (service in services) {
                         echo "Testing: ${service}"
 
-                        sh "./mvnw -pl ${svc} -am clean verify"
+                        sh "./mvnw -pl ${service} -am clean verify"
                     }
                 }
             }
