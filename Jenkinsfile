@@ -64,7 +64,7 @@ pipeline {
                         echo 'Testing all modules'
                         sh './mvnw clean test'
                     } else {
-                        def modules = CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service" }.join(',')
+                        def modules = CHANGED_SERVICES_LIST.join(',')
                         echo "Testing modules: ${modules}"
                         sh "./mvnw clean test -pl ${modules}"
                     }
@@ -180,7 +180,7 @@ pipeline {
                         echo 'Building all modules'
                         sh './mvnw clean package -DskipTests'
                     } else {
-                        def modules = CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service" }.join(',')
+                        def modules = CHANGED_SERVICES_LIST.join(',')
                         echo "Building modules: ${modules}"
                         sh "./mvnw clean package -DskipTests -pl ${modules}"
                     }
