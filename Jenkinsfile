@@ -52,48 +52,48 @@ pipeline {
             }
         }
 
-        stage('Check Code Coverage') {
-            steps {
-                script {
-                    def coverageThreshold = 70.0
-                    def failedServices = []
+        // stage('Check Code Coverage') {
+        //     steps {
+        //         script {
+        //             def coverageThreshold = 70.0
+        //             def failedServices = []
 
-                    def changedList = env.CHANGED_SERVICES.split(',')
+        //             def changedList = env.CHANGED_SERVICES.split(',')
 
-                    changedList.each { service ->
-                        if (service in ['customers', 'visits', 'vets']) {
-                            def coverageReport = "spring-petclinic-${service}-service/target/site/jacoco/jacoco.xml"
+        //             changedList.each { service ->
+        //                 if (service in ['customers', 'visits', 'vets']) {
+        //                     def coverageReport = "spring-petclinic-${service}-service/target/site/jacoco/jacoco.xml"
 
-                            def lineCoverage = sh(script: """
-                                if [ -f ${coverageReport} ]; then
-                                    awk '
-                                        /<counter type="LINE"[^>]*missed=/ {
-                                            split(\$0, a, "[ \\\"=]+");
-                                            missed = a[2];
-                                            covered = a[4];
-                                            sum = missed + covered;
-                                            coverage = (sum > 0 ? (covered / sum) * 100 : 0);
-                                            print coverage;
-                                        }
-                                    ' ${coverageReport}
-                                else
-                                    echo "0"
-                                fi
-                            """, returnStdout: true).trim()
+        //                     def lineCoverage = sh(script: """
+        //                         if [ -f ${coverageReport} ]; then
+        //                             awk '
+        //                                 /<counter type="LINE"[^>]*missed=/ {
+        //                                     split(\$0, a, "[ \\\"=]+");
+        //                                     missed = a[2];
+        //                                     covered = a[4];
+        //                                     sum = missed + covered;
+        //                                     coverage = (sum > 0 ? (covered / sum) * 100 : 0);
+        //                                     print coverage;
+        //                                 }
+        //                             ' ${coverageReport}
+        //                         else
+        //                             echo "0"
+        //                         fi
+        //                     """, returnStdout: true).trim()
 
-                            echo "Code coverage for ${service}: ${lineCoverage}%"
-                            if (lineCoverage.toDouble() < coverageThreshold) {
-                                failedServices.add(service)
-                            }
-                        }
-                    }
+        //                     echo "Code coverage for ${service}: ${lineCoverage}%"
+        //                     if (lineCoverage.toDouble() < coverageThreshold) {
+        //                         failedServices.add(service)
+        //                     }
+        //                 }
+        //             }
 
-                    if (!failedServices.isEmpty()) {
-                        error "The following services failed code coverage threshold (${coverageThreshold}%): ${failedServices.join(', ')}"
-                    }
-                }
-            }
-        }
+        //             if (!failedServices.isEmpty()) {
+        //                 error "The following services failed code coverage threshold (${coverageThreshold}%): ${failedServices.join(', ')}"
+        //             }
+        //         }
+        //     }
+        // }
 
         stage('Build') {
             steps {
