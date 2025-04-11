@@ -165,7 +165,7 @@ pipeline {
                     def services = env.CHANGED_SERVICES.split(',')
                     for (service in services) {
                         echo "Building: ${service}"
-                        sh "./mvnw clean verify -DskipTests -pl ${service} -am"
+                        sh "./mvnw clean package -DskipTests -pl ${service} -am"
                     }  
                     archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
                 }
