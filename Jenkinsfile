@@ -103,6 +103,7 @@ pipeline {
                                 def lineCoverage = (totalCovered / (totalCovered + totalMissed)) * 100
 
                                 echo "📊 ${svc} Line Coverage: ${String.format('%.2f', lineCoverage)}%"
+
                                 // Enforce coverage threshold
                                 if (lineCoverage < COVERAGE_THRESHOLD.toDouble()) {
                                     error("Coverage check failed for ${svc}: ${String.format('%.2f', lineCoverage)}% < ${COVERAGE_THRESHOLD}%")
@@ -144,7 +145,9 @@ pipeline {
     post {
         always {
             echo "Pipeline finished: ${currentBuild.result}"
-            archiveArtifacts allowEmptyArchive: true, artifacts: '**/target/site/jacoco/index.html', followSymlinks: false
+            // Đảm bảo luôn thu thập báo cáo JaCoCo sau khi test
+            junit '**/target/test-classes/*.xml'
+            jacoco()
         }
         success {
             echo "All changed services built, tested, and coverage uploaded."
