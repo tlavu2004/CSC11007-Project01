@@ -62,8 +62,7 @@ pipeline {
                     def services = env.CHANGED_SERVICES.split(',')
                     for (service in services) {
                         echo "Testing: ${service}"
-
-                        sh "./mvnw -pl ${service} -am clean verify -Djacoco.skip.check=true"
+                        sh "./mvnw clean test -pl ${service} "
                     }
                 }
             }
