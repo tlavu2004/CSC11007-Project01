@@ -54,6 +54,7 @@ pipeline {
                     def coverageThreshold = 70.0
                     def failedServices = []
                     def changedList = env.CHANGED_SERVICES.split(',')
+
                     changedList.each { service ->  
                         def coverageReport = "${service}/target/site/jacoco/jacoco.xml"
 
@@ -61,7 +62,7 @@ pipeline {
                             if [ -f ${coverageReport} ]; then
                                 awk '
                                     /<counter type="LINE"[^>]*missed=/ {
-                                        split(\$0, a, "[ \\\"=]+");
+                                        split(\\$0, a, "[ \\\"=]+");
                                         missed = a[2];
                                         covered = a[4];
                                         sum = missed + covered;
@@ -79,13 +80,14 @@ pipeline {
                             failedServices.add(service)
                         } 
                     }
+
                     if (!failedServices.isEmpty()) {
                         error "The following services failed code coverage threshold (${coverageThreshold}%): ${failedServices.join(', ')}"
                     }
                 }
             }
-        }
-
+        }   
+        
         stage('Build') {
             steps {
                 script {
