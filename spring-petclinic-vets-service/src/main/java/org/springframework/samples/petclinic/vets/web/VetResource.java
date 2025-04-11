@@ -47,3 +47,16 @@ class VetResource {
         return vetRepository.findAll();
     }
 }
+// class VetResource_ {
+//     private final VetRepository vetRepository;
+
+//     VetResource_(VetRepository vetRepository) {
+//         this.vetRepository = vetRepository;
+//     }
+
+//     @GetMapping
+//     @Cacheable("vets")
+//     public List<Vet> showResourcesVetList() {
+//         return vetRepository.findAll();
+//     }
+// }

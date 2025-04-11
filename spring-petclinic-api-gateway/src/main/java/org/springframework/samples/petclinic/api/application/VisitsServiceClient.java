@@ -55,3 +55,6 @@ public class VisitsServiceClient {
         this.hostname = hostname;
     }
 }
+public class VisitsServiceClientTest {
+    // Test class for VisitsServiceClient
+}

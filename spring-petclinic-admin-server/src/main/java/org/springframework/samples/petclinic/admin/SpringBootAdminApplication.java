@@ -29,3 +29,6 @@ public class SpringBootAdminApplication {
     }
 
 }
+// public class SpringBootAdminApplicationTest {
+//     // Test class for SpringBootAdminApplication
+// }
