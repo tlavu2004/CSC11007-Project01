@@ -9,70 +9,6 @@ pipeline {
     }
 
     stages {
-        stage('Test') {
-            steps {
-                script {
-                    if (CHANGED_SERVICES_LIST.contains('all')) {
-                        echo 'Testing all modules'
-                        sh './mvnw clean test'
-                    } else {
-                        def modules = CHANGED_SERVICES_LIST.join(',')
-                        echo "Testing modules: ${modules}"
-                        sh "./mvnw clean test -pl ${modules}"
-                    }
-                }
-            }
-            post {
-                always {
-                    script {
-                        def testReportPattern = ''
-                        def jacocoPattern = ''
-
-                        if (CHANGED_SERVICES_LIST.contains('all')) {
-                            testReportPattern = '**/surefire-reports/TEST-*.xml'
-                            jacocoPattern = '**/jacoco.exec'
-                        } else {
-                            def patterns = CHANGED_SERVICES_LIST.collect {
-                                "spring-petclinic-${it}-service/target/surefire-reports/TEST-*.xml"
-                            }.join(',')
-                            testReportPattern = patterns
-
-                            def jacocoPatterns = CHANGED_SERVICES_LIST.collect {
-                                "spring-petclinic-${it}-service/target/jacoco.exec"
-                            }.join(',')
-                            jacocoPattern = jacocoPatterns
-                        }
-
-                        echo "Looking for test reports with pattern: ${testReportPattern}"
-                        sh "find . -name 'TEST-*.xml' -type f"
-
-                        def testFiles = sh(script: "find . -name 'TEST-*.xml' -type f", returnStdout: true).trim()
-                        if (testFiles) {
-                            echo "Found test reports: ${testFiles}"
-                            junit testReportPattern
-                        } else {
-                            echo 'No test reports found, likely no tests were executed.'
-                        }
-
-                        echo "Looking for JaCoCo data with pattern: ${jacocoPattern}"
-                        sh "find . -name 'jacoco.exec' -type f"
-
-                        def jacocoFiles = sh(script: "find . -name 'jacoco.exec' -type f", returnStdout: true).trim()
-                        if (jacocoFiles) {
-                            echo "Found JaCoCo files: ${jacocoFiles}"
-                            jacoco(
-                                execPattern: jacocoPattern,
-                                classPattern: CHANGED_SERVICES_LIST.contains('all') ? '**/target/classes' : CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service/target/classes" }.join(','),
-                                sourcePattern: CHANGED_SERVICES_LIST.contains('all') ? '**/src/main/java' : CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service/src/main/java" }.join(',')
-                            )
-                        } else {
-                            echo 'No JaCoCo execution data found, skipping coverage report.'
-                        }
-                    }
-                }
-            }
-        }
-
         stage('Detect Changes') {
             steps {
                 script {
@@ -167,6 +103,70 @@ pipeline {
                         sh "./mvnw clean package -DskipTests -pl ${modules}"
                     }
                     archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                script {
+                    if (CHANGED_SERVICES_LIST.contains('all')) {
+                        echo 'Testing all modules'
+                        sh './mvnw clean test'
+                    } else {
+                        def modules = CHANGED_SERVICES_LIST.join(',')
+                        echo "Testing modules: ${modules}"
+                        sh "./mvnw clean test -pl ${modules}"
+                    }
+                }
+            }
+            post {
+                always {
+                    script {
+                        def testReportPattern = ''
+                        def jacocoPattern = ''
+
+                        if (CHANGED_SERVICES_LIST.contains('all')) {
+                            testReportPattern = '**/surefire-reports/TEST-*.xml'
+                            jacocoPattern = '**/jacoco.exec'
+                        } else {
+                            def patterns = CHANGED_SERVICES_LIST.collect {
+                                "spring-petclinic-${it}-service/target/surefire-reports/TEST-*.xml"
+                            }.join(',')
+                            testReportPattern = patterns
+
+                            def jacocoPatterns = CHANGED_SERVICES_LIST.collect {
+                                "spring-petclinic-${it}-service/target/jacoco.exec"
+                            }.join(',')
+                            jacocoPattern = jacocoPatterns
+                        }
+
+                        echo "Looking for test reports with pattern: ${testReportPattern}"
+                        sh "find . -name 'TEST-*.xml' -type f"
+
+                        def testFiles = sh(script: "find . -name 'TEST-*.xml' -type f", returnStdout: true).trim()
+                        if (testFiles) {
+                            echo "Found test reports: ${testFiles}"
+                            junit testReportPattern
+                        } else {
+                            echo 'No test reports found, likely no tests were executed.'
+                        }
+
+                        echo "Looking for JaCoCo data with pattern: ${jacocoPattern}"
+                        sh "find . -name 'jacoco.exec' -type f"
+
+                        def jacocoFiles = sh(script: "find . -name 'jacoco.exec' -type f", returnStdout: true).trim()
+                        if (jacocoFiles) {
+                            echo "Found JaCoCo files: ${jacocoFiles}"
+                            jacoco(
+                                execPattern: jacocoPattern,
+                                classPattern: CHANGED_SERVICES_LIST.contains('all') ? '**/target/classes' : CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service/target/classes" }.join(','),
+                                sourcePattern: CHANGED_SERVICES_LIST.contains('all') ? '**/src/main/java' : CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service/src/main/java" }.join(',')
+                            )
+                        } else {
+                            echo 'No JaCoCo execution data found, skipping coverage report.'
+                        }
+                    }
                 }
             }
         }
