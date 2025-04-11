@@ -26,16 +26,14 @@ pipeline {
         stage('Detect Changed Services') {
             steps {
                 script {
-                    // Fetch latest changes from main branch
                     sh 'git fetch origin main:refs/remotes/origin/main'
 
-                    // Get the list of changed files between the current branch and main
                     def changedFiles = sh(
                         script: "git diff --name-only origin/main HEAD",
                         returnStdout: true
                     ).trim().split("\n")
 
-                    echo "🔍 Changed files:\n${changedFiles.join('\n')}"
+                    echo "Changed files:\n${changedFiles.join('\n')}"
 
                     def changedServices = []
                     for (service in SERVICES.trim().split()) {
@@ -47,13 +45,12 @@ pipeline {
                         }
                     }
 
-                    // If no changes are detected, skip the build
                     if (changedServices.isEmpty()) {
-                        echo "✅ No service changes detected. Skipping build."
+                        echo "No service changes detected. Skipping build."
                         currentBuild.result = 'SUCCESS'
                         return
                     } else {
-                        echo "📦 Changed services: ${changedServices}"
+                        echo "Changed services: ${changedServices}"
                         env.CHANGED_SERVICES = changedServices.join(',')
                     }
                 }
@@ -70,9 +67,8 @@ pipeline {
                 script {
                     def services = env.CHANGED_SERVICES.split(',')
                     for (svc in services) {
-                        echo "🧪 Testing: ${svc}"
+                        echo "Testing: ${svc}"
 
-                        // Run tests for the changed service
                         sh "./mvnw -pl ${svc} -am clean verify"
 
                         junit "**/${svc}/target/surefire-reports/*.xml"
@@ -81,29 +77,30 @@ pipeline {
                         def coverageFile = "${svc}/target/site/jacoco/jacoco.xml"
                         if (fileExists(coverageFile)) {
                             def coverageXml = readFile(coverageFile)
-
-                            // Extract line coverage data
+                            
+                            // Extract all LINE counter elements
                             def lineCoveredMatches = (coverageXml =~ /counter type="LINE".*?covered="(\d+)"/)
                             def lineMissedMatches = (coverageXml =~ /counter type="LINE".*?missed="(\d+)"/)
-
+                            
+                            // Check if we have matches
                             if (lineCoveredMatches.count > 0 && lineMissedMatches.count > 0) {
+                                // Sum up all covered and missed lines
                                 def totalCovered = 0
                                 def totalMissed = 0
-
-                                // Process coverage data
+                                
+                                // Process all matches
                                 for (int i = 0; i < lineCoveredMatches.count; i++) {
                                     totalCovered += lineCoveredMatches[i][1].toDouble()
                                 }
-
+                                
                                 for (int i = 0; i < lineMissedMatches.count; i++) {
                                     totalMissed += lineMissedMatches[i][1].toDouble()
                                 }
-
+                                
                                 // Calculate coverage percentage
                                 def lineCoverage = (totalCovered / (totalCovered + totalMissed)) * 100
-
-                                echo "📊 ${svc} Line Coverage: ${String.format('%.2f', lineCoverage)}%"
-
+                                
+                                echo "${svc} Line Coverage: ${String.format('%.2f', lineCoverage)}%"
                                 // Enforce coverage threshold
                                 if (lineCoverage < COVERAGE_THRESHOLD.toDouble()) {
                                     error("Coverage check failed for ${svc}: ${String.format('%.2f', lineCoverage)}% < ${COVERAGE_THRESHOLD}%")
@@ -117,6 +114,12 @@ pipeline {
                         } else {
                             echo "⚠️ Coverage file not found for ${svc}. Skipping coverage check."
                         }
+
+                        // Upload coverage to Codecov
+                        sh '''
+                            curl -s https://codecov.io/bash -o codecov.sh
+                            bash codecov.sh -t $CODECOV_TOKEN -F $svc -s $svc/target
+                        '''
                     }
                 }
             }
@@ -133,8 +136,6 @@ pipeline {
                     def services = env.CHANGED_SERVICES.split(',')
                     for (svc in services) {
                         echo "Building (no tests): ${svc}"
-
-                        // Build the service (without running tests)
                         sh "./mvnw -pl ${svc} -am package -DskipTests"
                     }
                 }
@@ -145,9 +146,6 @@ pipeline {
     post {
         always {
             echo "Pipeline finished: ${currentBuild.result}"
-            // Đảm bảo luôn thu thập báo cáo JaCoCo sau khi test
-            junit '**/target/test-classes/*.xml'
-            jacoco()
         }
         success {
             echo "All changed services built, tested, and coverage uploaded."
