@@ -45,6 +45,22 @@ pipeline {
 
             }
         }
+        stage ("Test") {
+            when {
+                expression {
+                    return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
+                }
+            }
+            steps {
+                script {
+                    def services = env.CHANGED_SERVICES.split(',')
+                    for (service in services) {
+                        echo " Testing: ${service}"
+                        sh "./mvnw -pl ${service} -am clear verify"
+                    }
+                }
+            }
+        }
         stage('Build') {
             when {
                 expression {
