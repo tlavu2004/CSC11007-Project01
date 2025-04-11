@@ -55,3 +55,11 @@ public class VisitsServiceClient {
         this.hostname = hostname;
     }
 }
+// public class VisitsTest {
+
+// }
+// pulic class Test {
+//     public static void main(String[] args) {
+//         System.out.println("Hello World");
+//     }
+// }
