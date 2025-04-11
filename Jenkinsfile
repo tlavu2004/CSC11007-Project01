@@ -3,63 +3,16 @@ pipeline {
 
     options {
         buildDiscarder(logRotator(
-            numToKeepStr: '10',      // Giữ logs của 10 builds
-            artifactNumToKeepStr: '5' // Chỉ giữ artifacts của 5 builds gần nhất
+            numToKeepStr: '10',
+            artifactNumToKeepStr: '5'
         ))
     }
 
     stages {
-        stage('Detect Changes') {
-            steps {
-                script {
-                    sh 'pwd'
-
-                    def changedFiles = sh(script: 'git diff --name-only HEAD~1 HEAD', returnStdout: true).trim()
-                    echo "Changed files: ${changedFiles}"
-
-                    def changedServices = []
-
-                    if (changedFiles.contains('spring-petclinic-genai-service')) {
-                        changedServices.add('genai')
-                    }
-                    if (changedFiles.contains('spring-petclinic-customers-service')) {
-                        changedServices.add('customers')
-                    }
-                    if (changedFiles.contains('spring-petclinic-vets-service')) {
-                        changedServices.add('vets')
-                    }
-                    if (changedFiles.contains('spring-petclinic-visits-service')) {
-                        changedServices.add('visits')
-                    }
-                    if (changedFiles.contains('spring-petclinic-api-gateway')) {
-                        changedServices.add('api-gateway')
-                    }
-                    if (changedFiles.contains('spring-petclinic-discovery-server')) {
-                        changedServices.add('discovery')
-                    }
-                    if (changedFiles.contains('spring-petclinic-config-server')) {
-                        changedServices.add('config')
-                    }
-                    if (changedFiles.contains('spring-petclinic-admin-server')) {
-                        changedServices.add('admin')
-                    }
-
-                    if (changedServices.isEmpty()) {
-                        changedServices = ['all']
-                    }
-
-                    echo "Detected changes in services: ${changedServices}"
-
-                    CHANGED_SERVICES_LIST = changedServices
-                    CHANGED_SERVICES_STRING = changedServices.join(',')
-                    echo "Changed services: ${CHANGED_SERVICES_STRING}"
-                }
-            }
-        }
-
         stage('Test') {
             steps {
                 script {
+                    // Kiểm tra và chạy test
                     if (CHANGED_SERVICES_LIST.contains('all')) {
                         echo 'Testing all modules'
                         sh './mvnw clean test'
@@ -80,6 +33,7 @@ pipeline {
                             testReportPattern = '**/surefire-reports/TEST-*.xml'
                             jacocoPattern = '**/jacoco.exec'
                         } else {
+                            // Tạo pattern cho các báo cáo test và JaCoCo
                             def patterns = CHANGED_SERVICES_LIST.collect {
                                 "spring-petclinic-${it}-service/target/surefire-reports/TEST-*.xml"
                             }.join(',')
@@ -110,17 +64,50 @@ pipeline {
                             echo "Found JaCoCo files: ${jacocoFiles}"
                             jacoco(
                                 execPattern: jacocoPattern,
-                                classPattern: CHANGED_SERVICES_LIST.contains('all') ?
-                                    '**/target/classes' :
-                                    CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service/target/classes" }.join(','),
-                                sourcePattern: CHANGED_SERVICES_LIST.contains('all') ?
-                                    '**/src/main/java' :
-                                    CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service/src/main/java" }.join(',')
+                                classPattern: CHANGED_SERVICES_LIST.contains('all') ? '**/target/classes' : CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service/target/classes" }.join(','),
+                                sourcePattern: CHANGED_SERVICES_LIST.contains('all') ? '**/src/main/java' : CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service/src/main/java" }.join(',')
                             )
                         } else {
                             echo 'No JaCoCo execution data found, skipping coverage report.'
                         }
                     }
+                }
+            }
+        }
+
+        stage('Detect Changes') {
+            steps {
+                script {
+                    sh 'pwd'
+
+                    // Lấy danh sách các file thay đổi
+                    def changedFiles = sh(script: 'git diff --name-only HEAD~1 HEAD', returnStdout: true).trim()
+                    echo "Changed files: ${changedFiles}"
+
+                    // Sử dụng map để tìm các dịch vụ đã thay đổi
+                    def serviceMap = [
+                        'spring-petclinic-genai-service': 'genai',
+                        'spring-petclinic-customers-service': 'customers',
+                        'spring-petclinic-vets-service': 'vets',
+                        'spring-petclinic-visits-service': 'visits',
+                        'spring-petclinic-api-gateway': 'api-gateway',
+                        'spring-petclinic-discovery-server': 'discovery',
+                        'spring-petclinic-config-server': 'config',
+                        'spring-petclinic-admin-server': 'admin'
+                    ]
+
+                    // Tìm các dịch vụ thay đổi
+                    def changedServices = serviceMap.findAll { entry -> changedFiles.contains(entry.key) }.collect { it.value }
+
+                    if (changedServices.isEmpty()) {
+                        changedServices = ['all']
+                    }
+
+                    echo "Detected changes in services: ${changedServices}"
+
+                    CHANGED_SERVICES_LIST = changedServices
+                    CHANGED_SERVICES_STRING = changedServices.join(',')
+                    echo "Changed services: ${CHANGED_SERVICES_STRING}"
                 }
             }
         }
