@@ -55,14 +55,14 @@ pipeline {
                     def failedServices = []
                     def changedList = env.CHANGED_SERVICES.split(',')
 
-                    changedList.each { service ->  
+                    changedList.each { service ->
                         def coverageReport = "${service}/target/site/jacoco/jacoco.xml"
 
                         def lineCoverage = sh(script: """
                             if [ -f "${coverageReport}" ]; then
                                 awk '
                                     /<counter type="LINE"[^>]*missed=/ {
-                                        split(\$0, a, "[ \\\"=]+");
+                                        split(\\\$0, a, "[ \\\\\"=]+");
                                         missed = a[2];
                                         covered = a[4];
                                         sum = missed + covered;
@@ -78,7 +78,7 @@ pipeline {
                         echo "Code coverage for ${service}: ${lineCoverage}%"
                         if (lineCoverage.toDouble() < coverageThreshold) {
                             failedServices.add(service)
-                        } 
+                        }
                     }
 
                     if (!failedServices.isEmpty()) {
@@ -86,7 +86,7 @@ pipeline {
                     }
                 }
             }
-        }   
+        }
 
         stage('Build') {
             steps {
