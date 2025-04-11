@@ -58,9 +58,11 @@ pipeline {
             }
             steps {
                 script {
-                    def modules = env.CHANGED_SERVICES
-                    echo "Testing modules: ${modules}"
-                    sh "./mvnw -pl ${modules} -am clean verify"
+                    def services = env.CHANGED_SERVICES.split(',')
+                    for (service in services) {
+                        echo "🧪 Testing: ${service}"
+
+                        sh "./mvnw -pl ${svc} -am clean verify"
                 }
             }
             post {
