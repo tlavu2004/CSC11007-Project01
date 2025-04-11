@@ -1,44 +1,53 @@
 pipeline {
     agent any
 
+    environment {
+        SERVICES = """
+            spring-petclinic-admin-server
+            spring-petclinic-api-gateway
+            spring-petclinic-config-server
+            spring-petclinic-customers-service
+            spring-petclinic-discovery-server
+            spring-petclinic-genai-service
+            spring-petclinic-vets-service
+            spring-petclinic-visits-service
+        """
+    }
+
     options {
-        buildDiscarder(logRotator(
-            numToKeepStr: '10',
-            artifactNumToKeepStr: '5'
-        ))
+        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '5'))
     }
 
     stages {
+        stage("Checkout") {
+            steps {
+                checkout scm
+            }
+        }
+
         stage('Detect Changes') {
             steps {
                 script {
-                    sh 'pwd'
+                    sh "git fetch origin main:refs/remotes/origin/main"
+                    def changes = sh(script: "git diff --name-only origin/main HEAD", returnStdout: true).trim().split("\n")
+                    echo "Changed files: ${changes}"
 
-                    def changedFiles = sh(script: 'git diff --name-only HEAD~1 HEAD', returnStdout: true).trim()
-                    echo "Changed files: ${changedFiles}"
+                    def serviceMap = SERVICES.split().collectEntries {
+                        def key = it.trim()
+                        def shortName = key.replace('spring-petclinic-', '').replace('-service', '')
+                        [(key): shortName]
+                    }
 
-                    def serviceMap = [
-                        'spring-petclinic-genai-service': 'genai',
-                        'spring-petclinic-customers-service': 'customers',
-                        'spring-petclinic-vets-service': 'vets',
-                        'spring-petclinic-visits-service': 'visits',
-                        'spring-petclinic-api-gateway': 'api-gateway',
-                        'spring-petclinic-discovery-server': 'discovery',
-                        'spring-petclinic-config-server': 'config',
-                        'spring-petclinic-admin-server': 'admin'
-                    ]
-
-                    def changedServices = serviceMap.findAll { entry -> changedFiles.contains(entry.key) }.collect { it.value }
+                    def changedServices = serviceMap.findAll { entry ->
+                        changes.any { it.contains(entry.key) }
+                    }.collect { it.value }
 
                     if (changedServices.isEmpty()) {
                         changedServices = ['all']
                     }
 
-                    echo "Detected changes in services: ${changedServices}"
-
-                    CHANGED_SERVICES_LIST = changedServices
-                    CHANGED_SERVICES_STRING = changedServices.join(',')
-                    echo "Changed services: ${CHANGED_SERVICES_STRING}"
+                    echo "Detected changed services: ${changedServices}"
+                    env.CHANGED_SERVICES = changedServices.join(',')
                 }
             }
         }
@@ -46,12 +55,14 @@ pipeline {
         stage('Check Code Coverage') {
             steps {
                 script {
+                    def coverageThreshold = 70.0
                     def failedServices = []
 
-                    CHANGED_SERVICES_LIST.each { service ->
+                    def changedList = env.CHANGED_SERVICES.split(',')
+
+                    changedList.each { service ->
                         if (service in ['customers', 'visits', 'vets']) {
                             def coverageReport = "spring-petclinic-${service}-service/target/site/jacoco/jacoco.xml"
-                            def coverageThreshold = 70.0
 
                             def lineCoverage = sh(script: """
                                 if [ -f ${coverageReport} ]; then
@@ -66,19 +77,12 @@ pipeline {
                                         }
                                     ' ${coverageReport}
                                 else
-                                    echo "File not found: ${coverageReport}" > "/dev/stderr"
                                     echo "0"
                                 fi
                             """, returnStdout: true).trim()
 
-                            if (lineCoverage) {
-                                echo "Code coverage for ${service}: ${lineCoverage}%"
-                                def coverageValue = lineCoverage.toDouble()
-                                if (coverageValue < coverageThreshold) {
-                                    failedServices.add(service)
-                                }
-                            } else {
-                                echo "No coverage report found for ${service}, assuming 0%"
+                            echo "Code coverage for ${service}: ${lineCoverage}%"
+                            if (lineCoverage.toDouble() < coverageThreshold) {
                                 failedServices.add(service)
                             }
                         }
@@ -94,14 +98,15 @@ pipeline {
         stage('Build') {
             steps {
                 script {
-                    if (CHANGED_SERVICES_LIST.contains('all')) {
-                        echo 'Building all modules'
+                    def modules = env.CHANGED_SERVICES
+                    if (modules.contains('all')) {
+                        echo "Building all modules"
                         sh './mvnw clean package -DskipTests'
                     } else {
-                        def modules = CHANGED_SERVICES_LIST.join(',')
                         echo "Building modules: ${modules}"
                         sh "./mvnw clean package -DskipTests -pl ${modules}"
                     }
+
                     archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
                 }
             }
@@ -110,11 +115,11 @@ pipeline {
         stage('Test') {
             steps {
                 script {
-                    if (CHANGED_SERVICES_LIST.contains('all')) {
-                        echo 'Testing all modules'
+                    def modules = env.CHANGED_SERVICES
+                    if (modules.contains('all')) {
+                        echo "Testing all modules"
                         sh './mvnw clean test'
                     } else {
-                        def modules = CHANGED_SERVICES_LIST.join(',')
                         echo "Testing modules: ${modules}"
                         sh "./mvnw clean test -pl ${modules}"
                     }
@@ -123,48 +128,39 @@ pipeline {
             post {
                 always {
                     script {
-                        def testReportPattern = ''
-                        def jacocoPattern = ''
+                        def changed = env.CHANGED_SERVICES.split(',')
+                        def testPattern, jacocoPattern
 
-                        if (CHANGED_SERVICES_LIST.contains('all')) {
-                            testReportPattern = '**/surefire-reports/TEST-*.xml'
+                        if (changed.contains('all')) {
+                            testPattern = '**/surefire-reports/TEST-*.xml'
                             jacocoPattern = '**/jacoco.exec'
                         } else {
-                            def patterns = CHANGED_SERVICES_LIST.collect {
+                            testPattern = changed.collect {
                                 "spring-petclinic-${it}-service/target/surefire-reports/TEST-*.xml"
                             }.join(',')
-                            testReportPattern = patterns
-
-                            def jacocoPatterns = CHANGED_SERVICES_LIST.collect {
+                            jacocoPattern = changed.collect {
                                 "spring-petclinic-${it}-service/target/jacoco.exec"
                             }.join(',')
-                            jacocoPattern = jacocoPatterns
                         }
 
-                        echo "Looking for test reports with pattern: ${testReportPattern}"
-                        sh "find . -name 'TEST-*.xml' -type f"
-
-                        def testFiles = sh(script: "find . -name 'TEST-*.xml' -type f", returnStdout: true).trim()
+                        echo "Looking for test reports: ${testPattern}"
+                        def testFiles = sh(script: "find . -name 'TEST-*.xml'", returnStdout: true).trim()
                         if (testFiles) {
-                            echo "Found test reports: ${testFiles}"
-                            junit testReportPattern
+                            junit testPattern
                         } else {
-                            echo 'No test reports found, likely no tests were executed.'
+                            echo "No test reports found."
                         }
 
-                        echo "Looking for JaCoCo data with pattern: ${jacocoPattern}"
-                        sh "find . -name 'jacoco.exec' -type f"
-
-                        def jacocoFiles = sh(script: "find . -name 'jacoco.exec' -type f", returnStdout: true).trim()
+                        echo "Looking for jacoco files: ${jacocoPattern}"
+                        def jacocoFiles = sh(script: "find . -name 'jacoco.exec'", returnStdout: true).trim()
                         if (jacocoFiles) {
-                            echo "Found JaCoCo files: ${jacocoFiles}"
                             jacoco(
                                 execPattern: jacocoPattern,
-                                classPattern: CHANGED_SERVICES_LIST.contains('all') ? '**/target/classes' : CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service/target/classes" }.join(','),
-                                sourcePattern: CHANGED_SERVICES_LIST.contains('all') ? '**/src/main/java' : CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service/src/main/java" }.join(',')
+                                classPattern: changed.contains('all') ? '**/target/classes' : changed.collect { "spring-petclinic-${it}-service/target/classes" }.join(','),
+                                sourcePattern: changed.contains('all') ? '**/src/main/java' : changed.collect { "spring-petclinic-${it}-service/src/main/java" }.join(',')
                             )
                         } else {
-                            echo 'No JaCoCo execution data found, skipping coverage report.'
+                            echo "No jacoco files found."
                         }
                     }
                 }
