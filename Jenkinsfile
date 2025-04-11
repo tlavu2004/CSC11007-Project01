@@ -1,10 +1,6 @@
 pipeline {
     agent any
 
-    triggers {
-        githubPush()  // Nhận sự kiện push từ GitHub
-    }
-
     environment {
         CURRENT_BRANCH = "${env.BRANCH_NAME}"
     }
@@ -19,23 +15,20 @@ pipeline {
         stage('Build') {
             steps {
                 echo "Building project on ${env.BRANCH_NAME}"
-                // Thêm build thật nếu cần
-                sh './mvnw clean install'  // Cấu hình Maven build
+                sh './mvnw clean install'
             }
         }
 
         stage('Test') {
             steps {
                 echo "Running tests on ${env.BRANCH_NAME}"
-                sh './mvnw test'  // Chạy các bài test
             }
         }
 
         stage('Jacoco Coverage Report') {
             steps {
                 echo "Generating Jacoco coverage report"
-                // Thêm bước để tạo báo cáo Jacoco
-                sh './mvnw jacoco:report'
+                echo "Report should be available in target/site/jacoco/index.html"
             }
         }
 
@@ -51,6 +44,10 @@ pipeline {
     }
 
     post {
+        always {
+            publishCoverage adapters: [jacocoAdapter('**/target/site/jacoco/jacoco.xml')]
+        }
+
         success {
             echo "Build & test succeeded on branch: ${env.BRANCH_NAME}"
         }

@@ -60,13 +60,13 @@
                 <version>0.8.10</version>
                 <executions>
                     <execution>
-                        <id>prepare-agent</id> 
+                        <id>prepare-agent</id>
                         <goals>
                             <goal>prepare-agent</goal>
                         </goals>
-                    </execution> 
+                    </execution>
                     <execution>
-                        <id>report</id> 
+                        <id>report</id>
                         <phase>verify</phase>
                         <goals>
                             <goal>report</goal>
