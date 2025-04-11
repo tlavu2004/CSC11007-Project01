@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    triggers {
+        githubPush()  // Thêm trigger này để nhận sự kiện từ GitHub
+        genericWebhookTrigger('.*') // Thêm trigger này để nhận sự kiện từ GitHub
+    }
+
     environment {
         // Bạn có thể thêm biến môi trường ở đây nếu cần
         CURRENT_BRANCH = "${env.BRANCH_NAME}"
