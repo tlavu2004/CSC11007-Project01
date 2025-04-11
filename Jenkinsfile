@@ -48,7 +48,52 @@ pipeline {
             }
         }
 
-       
+        stage('Check Code Coverage') {
+            steps {
+                script {
+                    def failedServices = []
+                    def changedServices = env.CHANGED_SERVICES.split(',')
+                    def coverageThreshold = 70.0
+
+                    changedServices.each { service ->
+                        def coverageReport = "${service}/target/site/jacoco/jacoco.xml"
+
+                        def lineCoverage = sh(script: """
+                            if [ -f ${coverageReport} ]; then
+                                awk '
+                                    /<counter type="LINE"[^>]*missed=/ {
+                                        split(\$0, a, "[ \\\"=]+");
+                                        missed = a[2];
+                                        covered = a[4];
+                                        sum = missed + covered;
+                                        coverage = (sum > 0 ? (covered / sum) * 100 : 0);
+                                        print coverage;
+                                    }
+                                ' ${coverageReport}
+                            else
+                                echo "File not found: ${coverageReport}" > "/dev/stderr"
+                                echo "0"
+                            fi
+                        """, returnStdout: true).trim()
+
+                        if (lineCoverage) {
+                            echo "Code coverage for ${service}: ${lineCoverage}%"
+                            def coverageValue = lineCoverage.toDouble()
+                            if (coverageValue < coverageThreshold) {
+                                failedServices.add(service)
+                            }
+                        } else {
+                            echo "No coverage report found for ${service}, assuming 0%"
+                            failedServices.add(service)
+                        }
+                    }
+
+                    if (!failedServices.isEmpty()) {
+                        error "The following services failed code coverage threshold (${coverageThreshold}%): ${failedServices.join(', ')}"
+                    }
+                }
+            }
+        }
 
         stage('Test') {
             steps {
