@@ -1,157 +1,192 @@
 pipeline {
     agent any
 
-    environment {
-        SERVICES = """
-            spring-petclinic-admin-server
-            spring-petclinic-api-gateway
-            spring-petclinic-config-server
-            spring-petclinic-customers-service
-            spring-petclinic-discovery-server
-            spring-petclinic-genai-service
-            spring-petclinic-vets-service
-            spring-petclinic-visits-service
-        """
-        CODECOV_TOKEN = credentials('codecov_token')
-        COVERAGE_THRESHOLD = 70
+    options {
+        buildDiscarder(logRotator(
+            numToKeepStr: '10',      // Giữ logs của 10 builds
+            artifactNumToKeepStr: '5' // Chỉ giữ artifacts của 5 builds gần nhất
+        ))
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-
-        stage('Detect Changed Services') {
+        stage('Detect Changes') {
             steps {
                 script {
-                    sh 'git fetch origin main:refs/remotes/origin/main'
+                    sh 'pwd'
 
-                    def changedFiles = sh(
-                        script: "git diff --name-only origin/main HEAD",
-                        returnStdout: true
-                    ).trim().split("\n")
-
-                    echo "Changed files:\n${changedFiles.join('\n')}"
+                    def changedFiles = sh(script: 'git diff --name-only HEAD~1 HEAD', returnStdout: true).trim()
+                    echo "Changed files: ${changedFiles}"
 
                     def changedServices = []
-                    for (service in SERVICES.trim().split()) {
-                        for (file in changedFiles) {
-                            if (file.startsWith(service + "/")) {
-                                changedServices << service
-                                break
-                            }
-                        }
+
+                    if (changedFiles.contains('spring-petclinic-genai-service')) {
+                        changedServices.add('genai')
+                    }
+                    if (changedFiles.contains('spring-petclinic-customers-service')) {
+                        changedServices.add('customers')
+                    }
+                    if (changedFiles.contains('spring-petclinic-vets-service')) {
+                        changedServices.add('vets')
+                    }
+                    if (changedFiles.contains('spring-petclinic-visits-service')) {
+                        changedServices.add('visits')
+                    }
+                    if (changedFiles.contains('spring-petclinic-api-gateway')) {
+                        changedServices.add('api-gateway')
+                    }
+                    if (changedFiles.contains('spring-petclinic-discovery-server')) {
+                        changedServices.add('discovery')
+                    }
+                    if (changedFiles.contains('spring-petclinic-config-server')) {
+                        changedServices.add('config')
+                    }
+                    if (changedFiles.contains('spring-petclinic-admin-server')) {
+                        changedServices.add('admin')
                     }
 
                     if (changedServices.isEmpty()) {
-                        echo "No service changes detected. Skipping build."
-                        currentBuild.result = 'SUCCESS'
-                        return
+                        changedServices = ['all']
+                    }
+
+                    echo "Detected changes in services: ${changedServices}"
+
+                    CHANGED_SERVICES_LIST = changedServices
+                    CHANGED_SERVICES_STRING = changedServices.join(',')
+                    echo "Changed services: ${CHANGED_SERVICES_STRING}"
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                script {
+                    if (CHANGED_SERVICES_LIST.contains('all')) {
+                        echo 'Testing all modules'
+                        sh './mvnw clean test'
                     } else {
-                        echo "Changed services: ${changedServices}"
-                        env.CHANGED_SERVICES = changedServices.join(',')
+                        def modules = CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service" }.join(',')
+                        echo "Testing modules: ${modules}"
+                        sh "./mvnw clean test -pl ${modules}"
+                    }
+                }
+            }
+            post {
+                always {
+                    script {
+                        def testReportPattern = ''
+                        def jacocoPattern = ''
+
+                        if (CHANGED_SERVICES_LIST.contains('all')) {
+                            testReportPattern = '**/surefire-reports/TEST-*.xml'
+                            jacocoPattern = '**/jacoco.exec'
+                        } else {
+                            def patterns = CHANGED_SERVICES_LIST.collect {
+                                "spring-petclinic-${it}-service/target/surefire-reports/TEST-*.xml"
+                            }.join(',')
+                            testReportPattern = patterns
+
+                            def jacocoPatterns = CHANGED_SERVICES_LIST.collect {
+                                "spring-petclinic-${it}-service/target/jacoco.exec"
+                            }.join(',')
+                            jacocoPattern = jacocoPatterns
+                        }
+
+                        echo "Looking for test reports with pattern: ${testReportPattern}"
+                        sh "find . -name 'TEST-*.xml' -type f"
+
+                        def testFiles = sh(script: "find . -name 'TEST-*.xml' -type f", returnStdout: true).trim()
+                        if (testFiles) {
+                            echo "Found test reports: ${testFiles}"
+                            junit testReportPattern
+                        } else {
+                            echo 'No test reports found, likely no tests were executed.'
+                        }
+
+                        echo "Looking for JaCoCo data with pattern: ${jacocoPattern}"
+                        sh "find . -name 'jacoco.exec' -type f"
+
+                        def jacocoFiles = sh(script: "find . -name 'jacoco.exec' -type f", returnStdout: true).trim()
+                        if (jacocoFiles) {
+                            echo "Found JaCoCo files: ${jacocoFiles}"
+                            jacoco(
+                                execPattern: jacocoPattern,
+                                classPattern: CHANGED_SERVICES_LIST.contains('all') ?
+                                    '**/target/classes' :
+                                    CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service/target/classes" }.join(','),
+                                sourcePattern: CHANGED_SERVICES_LIST.contains('all') ?
+                                    '**/src/main/java' :
+                                    CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service/src/main/java" }.join(',')
+                            )
+                        } else {
+                            echo 'No JaCoCo execution data found, skipping coverage report.'
+                        }
                     }
                 }
             }
         }
 
-        stage('Test & Coverage') {
-            when {
-                expression {
-                    return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
-                }
-            }
+        stage('Check Code Coverage') {
             steps {
                 script {
-                    def services = env.CHANGED_SERVICES.split(',')
-                    for (svc in services) {
-                        echo "Testing: ${svc}"
+                    def failedServices = []
 
-                        sh "./mvnw -pl ${svc} -am clean verify"
+                    CHANGED_SERVICES_LIST.each { service ->
+                        if (service in ['customers', 'visits', 'vets']) {
+                            def coverageReport = "spring-petclinic-${service}-service/target/site/jacoco/jacoco.xml"
+                            def coverageThreshold = 70.0
 
-                        junit "**/${svc}/target/surefire-reports/*.xml"
+                            def lineCoverage = sh(script: """
+                                if [ -f ${coverageReport} ]; then
+                                    awk '
+                                        /<counter type="LINE"[^>]*missed=/ {
+                                            split(\$0, a, "[ \\\"=]+");
+                                            missed = a[2];
+                                            covered = a[4];
+                                            sum = missed + covered;
+                                            coverage = (sum > 0 ? (covered / sum) * 100 : 0);
+                                            print coverage;
+                                        }
+                                    ' ${coverageReport}
+                                else
+                                    echo "File not found: ${coverageReport}" > "/dev/stderr"
+                                    echo "0"
+                                fi
+                            """, returnStdout: true).trim()
 
-                        // Parse coverage report (e.g., jacoco.xml)
-                        def coverageFile = "${svc}/target/site/jacoco/jacoco.xml"
-                        if (fileExists(coverageFile)) {
-                            def coverageXml = readFile(coverageFile)
-                            
-                            // Extract all LINE counter elements
-                            def lineCoveredMatches = (coverageXml =~ /counter type="LINE".*?covered="(\d+)"/)
-                            def lineMissedMatches = (coverageXml =~ /counter type="LINE".*?missed="(\d+)"/)
-                            
-                            // Check if we have matches
-                            if (lineCoveredMatches.count > 0 && lineMissedMatches.count > 0) {
-                                // Sum up all covered and missed lines
-                                def totalCovered = 0
-                                def totalMissed = 0
-                                
-                                // Process all matches
-                                for (int i = 0; i < lineCoveredMatches.count; i++) {
-                                    totalCovered += lineCoveredMatches[i][1].toDouble()
-                                }
-                                
-                                for (int i = 0; i < lineMissedMatches.count; i++) {
-                                    totalMissed += lineMissedMatches[i][1].toDouble()
-                                }
-                                
-                                // Calculate coverage percentage
-                                def lineCoverage = (totalCovered / (totalCovered + totalMissed)) * 100
-                                
-                                echo "${svc} Line Coverage: ${String.format('%.2f', lineCoverage)}%"
-                                // Enforce coverage threshold
-                                if (lineCoverage < COVERAGE_THRESHOLD.toDouble()) {
-                                    error("Coverage check failed for ${svc}: ${String.format('%.2f', lineCoverage)}% < ${COVERAGE_THRESHOLD}%")
-                                } else {
-                                    echo "Coverage check passed for ${svc}"
+                            if (lineCoverage) {
+                                echo "Code coverage for ${service}: ${lineCoverage}%"
+                                def coverageValue = lineCoverage.toDouble()
+                                if (coverageValue < coverageThreshold) {
+                                    failedServices.add(service)
                                 }
                             } else {
-                                error("Coverage data not found in ${coverageFile}")
+                                echo "No coverage report found for ${service}, assuming 0%"
+                                failedServices.add(service)
                             }
-
-                        } else {
-                            echo "⚠️ Coverage file not found for ${svc}. Skipping coverage check."
                         }
+                    }
 
-                        // Upload coverage to Codecov
-                        sh '''
-                            curl -s https://codecov.io/bash -o codecov.sh
-                            bash codecov.sh -t $CODECOV_TOKEN -F $svc -s $svc/target
-                        '''
+                    if (!failedServices.isEmpty()) {
+                        error "The following services failed code coverage threshold (${coverageThreshold}%): ${failedServices.join(', ')}"
                     }
                 }
             }
         }
 
         stage('Build') {
-            when {
-                expression {
-                    return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
-                }
-            }
             steps {
                 script {
-                    def services = env.CHANGED_SERVICES.split(',')
-                    for (svc in services) {
-                        echo "Building (no tests): ${svc}"
-                        sh "./mvnw -pl ${svc} -am package -DskipTests"
+                    if (CHANGED_SERVICES_LIST.contains('all')) {
+                        echo 'Building all modules'
+                        sh './mvnw clean package -DskipTests'
+                    } else {
+                        def modules = CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service" }.join(',')
+                        echo "Building modules: ${modules}"
+                        sh "./mvnw clean package -DskipTests -pl ${modules}"
                     }
+                    archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
                 }
             }
-        }
-    }
-
-    post {
-        always {
-            echo "Pipeline finished: ${currentBuild.result}"
-        }
-        success {
-            echo "All changed services built, tested, and coverage uploaded."
-        }
-        failure {
-            echo "Build failed. Check logs and coverage for details."
         }
     }
 }
