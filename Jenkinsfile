@@ -60,7 +60,7 @@ pipeline {
                 script {
                     def modules = env.CHANGED_SERVICES
                     echo "Testing modules: ${modules}"
-                    sh "./mvnw clean test -pl ${modules} -am clean verify"
+                    sh "./mvnw -pl ${modules} -am clean verify"
                 }
             }
             post {
