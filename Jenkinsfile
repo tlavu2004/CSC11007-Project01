@@ -12,7 +12,6 @@ pipeline {
         stage('Test') {
             steps {
                 script {
-                    // Kiểm tra và chạy test
                     if (CHANGED_SERVICES_LIST.contains('all')) {
                         echo 'Testing all modules'
                         sh './mvnw clean test'
@@ -33,7 +32,6 @@ pipeline {
                             testReportPattern = '**/surefire-reports/TEST-*.xml'
                             jacocoPattern = '**/jacoco.exec'
                         } else {
-                            // Tạo pattern cho các báo cáo test và JaCoCo
                             def patterns = CHANGED_SERVICES_LIST.collect {
                                 "spring-petclinic-${it}-service/target/surefire-reports/TEST-*.xml"
                             }.join(',')
@@ -80,11 +78,9 @@ pipeline {
                 script {
                     sh 'pwd'
 
-                    // Lấy danh sách các file thay đổi
                     def changedFiles = sh(script: 'git diff --name-only HEAD~1 HEAD', returnStdout: true).trim()
                     echo "Changed files: ${changedFiles}"
 
-                    // Sử dụng map để tìm các dịch vụ đã thay đổi
                     def serviceMap = [
                         'spring-petclinic-genai-service': 'genai',
                         'spring-petclinic-customers-service': 'customers',
@@ -96,7 +92,6 @@ pipeline {
                         'spring-petclinic-admin-server': 'admin'
                     ]
 
-                    // Tìm các dịch vụ thay đổi
                     def changedServices = serviceMap.findAll { entry -> changedFiles.contains(entry.key) }.collect { it.value }
 
                     if (changedServices.isEmpty()) {
