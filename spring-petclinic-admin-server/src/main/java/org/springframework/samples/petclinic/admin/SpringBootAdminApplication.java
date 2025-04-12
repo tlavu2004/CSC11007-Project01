@@ -30,8 +30,6 @@ public class SpringBootAdminApplication {
 }
 // public class SpringBootAdminApplicationTests {
 // }
-public class SpringBootAdminApplicationTests {
-    // @Test
-    // void contextLoads() {
-    // }
-}
+// public class Testadmin {
+
+// }
