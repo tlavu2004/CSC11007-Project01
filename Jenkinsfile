@@ -108,6 +108,7 @@ pipeline {
                 script {
                     def failedServices = []
                     def changedServices = env.CHANGED_SERVICES.split(',')
+                    echo "Checking code coverage for changed services: ${changedServices}"
                     def coverageThreshold = 70.0
                     changedServices.each { service ->
                         def coverageReport = "${service}/target/site/jacoco/jacoco.xml"
