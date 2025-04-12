@@ -1,83 +1,154 @@
 pipeline {
     agent any
 
+    environment {
+        SERVICES = """
+            spring-petclinic-admin-server
+            spring-petclinic-api-gateway
+            spring-petclinic-config-server
+            spring-petclinic-customers-service
+            spring-petclinic-discovery-server
+            spring-petclinic-genai-service
+            spring-petclinic-vets-service
+            spring-petclinic-visits-service
+        """
+    }
+
     options {
         buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '10'))
     }
 
     stages {
+        stage("Checkout") {
+            steps {
+                checkout scm
+            }
+        }
+
         stage('Detect Changes') {
             steps {
                 script {
-                    sh 'pwd'
+                    sh "git fetch origin main:refs/remotes/origin/main"
+                    def changes = sh(script: "git diff --name-only origin/main HEAD", returnStdout: true).trim().split("\n")
+                    echo "Changed files: ${changes}"
 
-                    def changedFiles = sh(script: 'git diff --name-only HEAD~1 HEAD', returnStdout: true).trim()
-                    echo "Changed files: ${changedFiles}"
+                    def allServices = SERVICES.split().collect { it.trim() }
 
-                    def serviceMap = [
-                        'spring-petclinic-genai-service': 'genai',
-                        'spring-petclinic-customers-service': 'customers',
-                        'spring-petclinic-vets-service': 'vets',
-                        'spring-petclinic-visits-service': 'visits',
-                        'spring-petclinic-api-gateway': 'api-gateway',
-                        'spring-petclinic-discovery-server': 'discovery',
-                        'spring-petclinic-config-server': 'config',
-                        'spring-petclinic-admin-server': 'admin'
-                    ]
-
-                    def changedServices = serviceMap.findAll { entry -> changedFiles.contains(entry.key) }.collect { it.value }
-
-                    if (changedServices.isEmpty()) {
-                        changedServices = ['all']
+                    def changedServices = allServices.findAll { service ->
+                        changes.any { it.contains(service) }
                     }
 
-                    echo "Detected changes in services: ${changedServices}"
+                    if (changedServices.isEmpty()) {
+                        echo "No service changes detected. Skipping build."
+                        currentBuild.result = 'SUCCESS'
+                        return
+                    }
 
-                    CHANGED_SERVICES_LIST = changedServices
-                    CHANGED_SERVICES_STRING = changedServices.join(',')
-                    echo "Changed services: ${CHANGED_SERVICES_STRING}"
+                    echo "Detected changed services: ${changedServices}"
+                    env.CHANGED_SERVICES = changedServices.join(',')
                 }
             }
         }
 
+        stage('Test') {
+            when {
+                expression {
+                    return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
+                }
+            }
+            steps {
+                script {
+                    def services = env.CHANGED_SERVICES.split(',')
+                    for (service in services) {
+                        echo "Testing: ${service}"
+                        sh "./mvnw clean verify -pl ${service}"
+                    }   
+                }
+            }
+            post {
+                always {
+                    script {
+                        def changed = env.CHANGED_SERVICES.split(',')
+                        def testPattern, jacocoPattern
+
+                        testPattern = changed.collect {
+                            "${it}/target/surefire-reports/TEST-*.xml"
+                        }.join(',')
+                        jacocoPattern = changed.collect {
+                            "${it}/target/jacoco.exec"
+                        }.join(',') 
+
+                        echo "Looking for test reports: ${testPattern}"
+                        def testFiles = sh(script: "find . -name 'TEST-*.xml'", returnStdout: true).trim()
+                        if (testFiles) {
+                            junit testPattern
+                        } else {
+                            echo "No test reports found."
+                        }
+
+                        echo "Looking for jacoco files: ${jacocoPattern}"
+                        def jacocoFiles = sh(script: "find . -name 'jacoco.exec'", returnStdout: true).trim()
+                        if (jacocoFiles) {
+                            jacoco(
+                                execPattern: jacocoPattern,
+                                classPattern:  changed.collect { "${it}/target/classes" }.join(','),
+                                sourcePattern: changed.collect { "${it}/src/main/java" }.join(',')
+                            )
+                        } else {
+                            echo "No jacoco files found."
+                        }
+                    }
+                }
+            }
+        }
         stage('Check Code Coverage') {
             steps {
                 script {
                     def failedServices = []
-
-                    CHANGED_SERVICES_LIST.each { service ->
-                        if (service in ['customers', 'visits', 'vets']) {
-                            def coverageReport = "spring-petclinic-${service}-service/target/site/jacoco/jacoco.xml"
-                            def coverageThreshold = 70.0
-
-                            def lineCoverage = sh(script: """
-                                if [ -f ${coverageReport} ]; then
-                                    awk '
-                                        /<counter type="LINE"[^>]*missed=/ {
-                                            split(\$0, a, "[ \\\"=]+");
-                                            missed = a[2];
-                                            covered = a[4];
-                                            sum = missed + covered;
-                                            coverage = (sum > 0 ? (covered / sum) * 100 : 0);
-                                            print coverage;
+                    def changedServices = env.CHANGED_SERVICES.split(',')
+                    def coverageThreshold = 70.0
+                    changedServices.each { service ->
+                        def coverageReport = "${service}/target/site/jacoco/jacoco.xml"
+                        def lineCoverage = sh(script: """
+                            if [ -f ${coverageReport} ]; then
+                                awk '
+                                    /<counter type="LINE"[^>]*missed=/ {
+                                        split(\$0, a, "[ \\\"=]+");
+                                        # Debug output
+                                        print "Debug: Checking jacoco.xml for ${service}..." > "/dev/stderr";
+                                        print "Raw line: " \$0 > "/dev/stderr";
+                                        print "Array after split:" > "/dev/stderr";
+                                        for (i in a) print "a[" i "] = " a[i] > "/dev/stderr";
+                                        # Find missed and covered indices
+                                        for (i in a) {
+                                            if (a[i] == "missed") missed = a[i+1];
+                                            if (a[i] == "covered") covered = a[i+1];
                                         }
-                                    ' ${coverageReport}
-                                else
-                                    echo "File not found: ${coverageReport}" > "/dev/stderr"
-                                    echo "0"
-                                fi
-                            """, returnStdout: true).trim()
+                                        print "missed = " missed ", covered = " covered > "/dev/stderr";
+                                        sum = missed + covered;
+                                        print "sum (missed + covered) = " sum > "/dev/stderr";
+                                        coverage = (sum > 0 ? (covered / sum) * 100 : 0);
+                                        print "Coverage = " coverage "%" > "/dev/stderr";
+                                        print "-----" > "/dev/stderr";
+                                        # Output final coverage value to stdout
+                                        print coverage;
+                                    }
+                                ' ${coverageReport}
+                             else
+                                echo "File not found: ${coverageReport}" > "/dev/stderr"
+                                echo "0"
+                            fi
+                        """, returnStdout: true).trim()
 
-                            if (lineCoverage) {
-                                echo "Code coverage for ${service}: ${lineCoverage}%"
-                                def coverageValue = lineCoverage.toDouble()
-                                if (coverageValue < coverageThreshold) {
-                                    failedServices.add(service)
-                                }
-                            } else {
-                                echo "No coverage report found for ${service}, assuming 0%"
+                        if (lineCoverage) {
+                            echo "Code coverage for ${service}: ${lineCoverage}%"
+                            def coverageValue = lineCoverage.toDouble()
+                            if (coverageValue < coverageThreshold) {
                                 failedServices.add(service)
                             }
+                        } else {
+                            echo "No coverage report found for ${service}, assuming 0%"
+                            failedServices.add(service)
                         }
                     }
 
@@ -89,81 +160,19 @@ pipeline {
         }
 
         stage('Build') {
+            when {
+                expression {
+                    return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
+                }
+            }
             steps {
                 script {
-                    if (CHANGED_SERVICES_LIST.contains('all')) {
-                        echo 'Building all modules'
-                        sh './mvnw clean package -DskipTests'
-                    } else {
-                        def modules = CHANGED_SERVICES_LIST.join(',')
-                        echo "Building modules: ${modules}"
-                        sh "./mvnw clean package -DskipTests -pl ${modules}"
-                    }
+                    def services = env.CHANGED_SERVICES.split(',')
+                    for (service in services) {
+                        echo "Building: ${service}"
+                        sh "./mvnw -pl ${service} -am package -DskipTests"
+                    }  
                     archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
-                }
-            }
-        }
-
-        stage('Test') {
-            steps {
-                script {
-                    if (CHANGED_SERVICES_LIST.contains('all')) {
-                        echo 'Testing all modules'
-                        sh './mvnw clean test'
-                    } else {
-                        def modules = CHANGED_SERVICES_LIST.join(',')
-                        echo "Testing modules: ${modules}"
-                        sh "./mvnw clean test -pl ${modules}"
-                    }
-                }
-            }
-            post {
-                always {
-                    script {
-                        def testReportPattern = ''
-                        def jacocoPattern = ''
-
-                        if (CHANGED_SERVICES_LIST.contains('all')) {
-                            testReportPattern = '**/surefire-reports/TEST-*.xml'
-                            jacocoPattern = '**/jacoco.exec'
-                        } else {
-                            def patterns = CHANGED_SERVICES_LIST.collect {
-                                "spring-petclinic-${it}-service/target/surefire-reports/TEST-*.xml"
-                            }.join(',')
-                            testReportPattern = patterns
-
-                            def jacocoPatterns = CHANGED_SERVICES_LIST.collect {
-                                "spring-petclinic-${it}-service/target/jacoco.exec"
-                            }.join(',')
-                            jacocoPattern = jacocoPatterns
-                        }
-
-                        echo "Looking for test reports with pattern: ${testReportPattern}"
-                        sh "find . -name 'TEST-*.xml' -type f"
-
-                        def testFiles = sh(script: "find . -name 'TEST-*.xml' -type f", returnStdout: true).trim()
-                        if (testFiles) {
-                            echo "Found test reports: ${testFiles}"
-                            junit testReportPattern
-                        } else {
-                            echo 'No test reports found, likely no tests were executed.'
-                        }
-
-                        echo "Looking for JaCoCo data with pattern: ${jacocoPattern}"
-                        sh "find . -name 'jacoco.exec' -type f"
-
-                        def jacocoFiles = sh(script: "find . -name 'jacoco.exec' -type f", returnStdout: true).trim()
-                        if (jacocoFiles) {
-                            echo "Found JaCoCo files: ${jacocoFiles}"
-                            jacoco(
-                                execPattern: jacocoPattern,
-                                classPattern: CHANGED_SERVICES_LIST.contains('all') ? '**/target/classes' : CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service/target/classes" }.join(','),
-                                sourcePattern: CHANGED_SERVICES_LIST.contains('all') ? '**/src/main/java' : CHANGED_SERVICES_LIST.collect { "spring-petclinic-${it}-service/src/main/java" }.join(',')
-                            )
-                        } else {
-                            echo 'No JaCoCo execution data found, skipping coverage report.'
-                        }
-                    }
                 }
             }
         }
