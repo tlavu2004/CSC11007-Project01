@@ -98,6 +98,7 @@ pipeline {
                         } else {
                             echo "No jacoco files found."
                         }
+                        sh 'find . -name jacoco.xml || true'
                     }
                 }
             }
@@ -108,13 +109,8 @@ pipeline {
                     def failedServices = []
                     def changedServices = env.CHANGED_SERVICES.split(',')
                     def coverageThreshold = 70.0
-
                     changedServices.each { service ->
-                        def coverageReport = "./${service}/target/site/jacoco/jacoco.xml"
-                        sh """
-                            echo "Listing contents of ${service}/target/site/jacoco"
-                            ls -la ${service}/target/site/jacoco || true
-                        """
+                        def coverageReport = "${service}/target/site/jacoco/jacoco.xml"
                         echo "Checking code coverage for ${service} at ${coverageReport}"
                         def lineCoverage = sh(script: """
                             if [ -f ${coverageReport} ]; then
