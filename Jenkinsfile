@@ -110,7 +110,7 @@ pipeline {
                     def coverageThreshold = 70.0
 
                     changedServices.each { service ->
-                        def coverageReport = "${service}/target/site/jacoco/jacoco.xml"
+                        def coverageReport = "./${service}/target/site/jacoco/jacoco.xml"
                         sh """
                             echo "Listing contents of ${service}/target/site/jacoco"
                             ls -la ${service}/target/site/jacoco || true
