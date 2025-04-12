@@ -92,8 +92,8 @@ pipeline {
                         if (jacocoFiles) {
                             jacoco(
                                 execPattern: jacocoPattern,
-                                classPattern: changed.contains('all') ? '**/target/classes' : changed.collect { "${it}/target/classes" }.join(','),
-                                sourcePattern: changed.contains('all') ? '**/src/main/java' : changed.collect { "${it}/src/main/java" }.join(',')
+                                classPattern:  changed.collect { "${it}/target/classes" }.join(','),
+                                sourcePattern: changed.collect { "${it}/src/main/java" }.join(',')
                             )
                         } else {
                             echo "No jacoco files found."
