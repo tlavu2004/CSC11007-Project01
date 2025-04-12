@@ -72,17 +72,12 @@ pipeline {
                         def changed = env.CHANGED_SERVICES.split(',')
                         def testPattern, jacocoPattern
 
-                        if (changed.contains('all')) {
-                            testPattern = '**/surefire-reports/TEST-*.xml'
-                            jacocoPattern = '**/jacoco.exec'
-                        } else {
-                            testPattern = changed.collect {
-                                "${it}/target/surefire-reports/TEST-*.xml"
-                            }.join(',')
-                            jacocoPattern = changed.collect {
-                                "${it}/target/jacoco.exec"
-                            }.join(',')
-                        }
+                        testPattern = changed.collect {
+                            "${it}/target/surefire-reports/TEST-*.xml"
+                        }.join(',')
+                        jacocoPattern = changed.collect {
+                            "${it}/target/jacoco.exec"
+                        }.join(',') 
 
                         echo "Looking for test reports: ${testPattern}"
                         def testFiles = sh(script: "find . -name 'TEST-*.xml'", returnStdout: true).trim()
@@ -165,7 +160,7 @@ pipeline {
                     def services = env.CHANGED_SERVICES.split(',')
                     for (service in services) {
                         echo "Building: ${service}"
-                        sh "./mvnw clean package -DskipTests -pl ${service} -am"
+                        sh "./mvnw -pl ${service} -am package -DskipTests"
                     }  
                     archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
                 }
