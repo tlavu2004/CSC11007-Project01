@@ -1,5 +1,4 @@
 pipeline {
-
     agent any
 
     environment {
@@ -16,7 +15,7 @@ pipeline {
     }
 
     options {
-        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '5'))
+        buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '10'))
     }
 
     stages {
