@@ -28,3 +28,10 @@ public class SpringBootAdminApplication {
         SpringApplication.run(SpringBootAdminApplication.class, args);
     }
 }
+// public class SpringBootAdminApplicationTests {
+// }
+public class SpringBootAdminApplicationTests {
+    // @Test
+    // void contextLoads() {
+    // }
+}
