@@ -28,8 +28,3 @@ public class SpringBootAdminApplication {
         SpringApplication.run(SpringBootAdminApplication.class, args);
     }
 }
-// public class SpringBootAdminApplicationTests {
-// }
-// public class Testadmin {
-
-// }

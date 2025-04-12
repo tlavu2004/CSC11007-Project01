@@ -47,6 +47,3 @@ class VetResource {
         return vetRepository.findAll();
     }
 }
-// public class Test {
-
-// }
