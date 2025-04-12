@@ -111,6 +111,10 @@ pipeline {
 
                     changedServices.each { service ->
                         def coverageReport = "${service}/target/site/jacoco/jacoco.xml"
+                        sh """
+                            echo "Listing contents of ${service}/target/site/jacoco"
+                            ls -la ${service}/target/site/jacoco || true
+                        """
                         echo "Checking code coverage for ${service} at ${coverageReport}"
                         def lineCoverage = sh(script: """
                             if [ -f ${coverageReport} ]; then
