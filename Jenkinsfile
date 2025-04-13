@@ -46,6 +46,8 @@ pipeline {
 
                     echo "Detected changed services: ${changedServices}"
                     env.CHANGED_SERVICES = changedServices.join(',')
+
+                    echo "Raw CHANGED_SERVICES: '${env.CHANGED_SERVICES}'"
                 }
             }
         }
@@ -59,7 +61,19 @@ pipeline {
 
             steps {
                 script {
-                    def services = env.CHANGED_SERVICES.split(',')
+                    echo "Raw CHANGED_SERVICES: '${env.CHANGED_SERVICES}'"
+
+                    def services = env.CHANGED_SERVICES.split(',').findAll { it?.trim() }
+                    if (services.isEmpty()) {
+                        echo "No changed services to process."
+                        return
+                    }
+
+                    if (services.isEmpty()) {
+                        echo "No changed services to process."
+                        return
+                    }
+
                     for (service in services) {
                         echo "Testing: ${service}"
                         sh "./mvnw clean verify -pl ${service}"
@@ -70,13 +84,13 @@ pipeline {
             post {
                 always {
                     script {
-                        def changed = env.CHANGED_SERVICES.split(',')
-                        def testPattern, jacocoPattern
+                        def changed = env.CHANGED_SERVICES.split(',').findAll { it?.trim() }
 
-                        testPattern = changed.collect {
+                        def testPattern = changed.collect {
                             "${it}/target/surefire-reports/TEST-*.xml"
                         }.join(',')
-                        jacocoPattern = changed.collect {
+
+                        def jacocoPattern = changed.collect {
                             "${it}/target/jacoco.exec"
                         }.join(',') 
 
@@ -171,12 +185,21 @@ pipeline {
 
             steps {
                 script {
+                    echo "Raw CHANGED_SERVICES: '${env.CHANGED_SERVICES}'"
+
                     def services = env.CHANGED_SERVICES.split(',')
                     for (service in services) {
                         echo "Building: ${service}"
                         sh "./mvnw -pl ${service} -am package -DskipTests"
-                    }  
-                    archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
+                    }
+
+                    def jarFiles = sh(script: "find . -name '*.jar'", returnStdout: true).trim()
+                    if (jarFiles) {
+                        echo "Found JARs:\n${jarFiles}"
+                        archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
+                    } else {
+                        echo "No JAR files found to archive."
+                    }
                 }
             }
         }
