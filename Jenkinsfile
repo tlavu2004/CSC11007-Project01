@@ -32,7 +32,7 @@ pipeline {
                     def changes = sh(script: "git diff --name-only origin/main HEAD", returnStdout: true).trim().split("\n")
                     echo "Changed files: ${changes}"
 
-                    def allServices = SERVICES.split("\\n").collect { it.trim() }
+                    def allServices = SERVICES.split().collect { it.trim() }
 
                     def changedServices = allServices.findAll { service ->
                         changes.any { it.contains(service) }
@@ -46,8 +46,6 @@ pipeline {
 
                     echo "Detected changed services: ${changedServices}"
                     env.CHANGED_SERVICES = changedServices.join(',')
-
-                    echo "Raw CHANGED_SERVICES: '${env.CHANGED_SERVICES}'"
                 }
             }
         }
@@ -58,39 +56,25 @@ pipeline {
                     return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
                 }
             }
-
             steps {
                 script {
-                    echo "Raw CHANGED_SERVICES: '${env.CHANGED_SERVICES}'"
-
-                    def services = env.CHANGED_SERVICES.split(',').findAll { it?.trim() }
-                    if (services.isEmpty()) {
-                        echo "No changed services to process."
-                        return
-                    }
-
-                    if (services.isEmpty()) {
-                        echo "No changed services to process."
-                        return
-                    }
-
+                    def services = env.CHANGED_SERVICES.split(',')
                     for (service in services) {
                         echo "Testing: ${service}"
                         sh "./mvnw clean verify -pl ${service}"
                     }   
                 }
             }
-            
             post {
                 always {
                     script {
-                        def changed = env.CHANGED_SERVICES.split(',').findAll { it?.trim() }
+                        def changed = env.CHANGED_SERVICES.split(',')
+                        def testPattern, jacocoPattern
 
-                        def testPattern = changed.collect {
+                        testPattern = changed.collect {
                             "${it}/target/surefire-reports/TEST-*.xml"
                         }.join(',')
-
-                        def jacocoPattern = changed.collect {
+                        jacocoPattern = changed.collect {
                             "${it}/target/jacoco.exec"
                         }.join(',') 
 
@@ -117,7 +101,6 @@ pipeline {
                 }
             }
         }
-
         stage('Check Code Coverage') {
             steps {
                 script {
@@ -182,24 +165,14 @@ pipeline {
                     return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
                 }
             }
-
             steps {
                 script {
-                    echo "Raw CHANGED_SERVICES: '${env.CHANGED_SERVICES}'"
-
                     def services = env.CHANGED_SERVICES.split(',')
                     for (service in services) {
                         echo "Building: ${service}"
                         sh "./mvnw -pl ${service} -am package -DskipTests"
-                    }
-
-                    def jarFiles = sh(script: "find . -name '*.jar'", returnStdout: true).trim()
-                    if (jarFiles) {
-                        echo "Found JARs:\n${jarFiles}"
-                        archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
-                    } else {
-                        echo "No JAR files found to archive."
-                    }
+                    }  
+                    archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
                 }
             }
         }
