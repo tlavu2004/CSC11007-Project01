@@ -79,15 +79,25 @@ pipeline {
                         def lineCoverage = sh(script: """
                             if [ -f ${coverageReport} ]; then
                                 awk '
-                                    /<counter type="LINE"[^>]*missed=/ {
-                                        split(\$0, a, "[ \\\"=]+");
-                                        for (i in a) {
-                                            if (a[i] == "missed") missed = a[i+1];
-                                            if (a[i] == "covered") covered = a[i+1];
+                                    /<counter type="LINE"/ {
+                                        for (i = 1; i <= NF; i++) {
+                                            if (\$i ~ /missed=/) {
+                                                gsub(/[^0-9]/, "", \$i)
+                                                missed += \$i
+                                            } else if (\$i ~ /covered=/) {
+                                                gsub(/[^0-9]/, "", \$i)
+                                                covered += \$i
+                                            }
                                         }
-                                        sum = missed + covered;
-                                        coverage = (sum > 0 ? (covered / sum) * 100 : 0);
-                                        print coverage;
+                                    }
+                                    END {
+                                        total = missed + covered
+                                        if (total > 0) {
+                                            coverage = (covered / total) * 100
+                                            printf("%.4f", coverage)
+                                        } else {
+                                            print "0"
+                                        }
                                     }
                                 ' ${coverageReport}
                             else
