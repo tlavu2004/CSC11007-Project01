@@ -32,7 +32,7 @@ pipeline {
                     def changes = sh(script: "git diff --name-only origin/main HEAD", returnStdout: true).trim().split("\n")
                     echo "Changed files: ${changes}"
 
-                    def allServices = SERVICES.split().collect { it.trim() }
+                    def allServices = SERVICES.split("\\n").collect { it.trim() }
 
                     def changedServices = allServices.findAll { service ->
                         changes.any { it.contains(service) }
@@ -56,7 +56,7 @@ pipeline {
                     return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
                 }
             }
-            
+
             steps {
                 script {
                     def services = env.CHANGED_SERVICES.split(',')
