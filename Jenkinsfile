@@ -56,6 +56,7 @@ pipeline {
                     return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
                 }
             }
+            
             steps {
                 script {
                     def services = env.CHANGED_SERVICES.split(',')
@@ -65,6 +66,7 @@ pipeline {
                     }   
                 }
             }
+            
             post {
                 always {
                     script {
@@ -101,7 +103,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Check Code Coverage') {
             steps {
                 script {
@@ -166,6 +168,7 @@ pipeline {
                     return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
                 }
             }
+
             steps {
                 script {
                     def services = env.CHANGED_SERVICES.split(',')
