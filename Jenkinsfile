@@ -25,40 +25,10 @@ pipeline {
             }
         }
 
-        stage('Detect Changes') {
-            steps {
-                script {
-                    sh "git fetch origin main:refs/remotes/origin/main"
-                    def changes = sh(script: "git diff --name-only origin/main HEAD", returnStdout: true).trim().split("\n")
-                    echo "Changed files: ${changes}"
-
-                    def allServices = SERVICES.split().collect { it.trim() }
-
-                    def changedServices = allServices.findAll { service ->
-                        changes.any { it.contains(service) }
-                    }
-
-                    if (changedServices.isEmpty()) {
-                        echo "No service changes detected. Skipping build."
-                        currentBuild.result = 'SUCCESS'
-                        return
-                    }
-
-                    echo "Detected changed services: ${changedServices}"
-                    env.CHANGED_SERVICES = changedServices.join(',')
-                }
-            }
-        }
-
         stage('Test') {
-            when {
-                expression {
-                    return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
-                }
-            }
             steps {
                 script {
-                    def services = env.CHANGED_SERVICES.split(',')
+                    def services = SERVICES.split()
                     for (service in services) {
                         echo "Testing: ${service}"
                         sh "./mvnw clean verify -pl ${service}"
@@ -68,13 +38,11 @@ pipeline {
             post {
                 always {
                     script {
-                        def changed = env.CHANGED_SERVICES.split(',')
-
-                        def testPattern = changed.collect {
+                        def testPattern, jacocoPattern
+                        testPattern = SERVICES.split().collect {
                             "${it}/target/surefire-reports/TEST-*.xml"
                         }.join(',')
-                        
-                        def jacocoPattern = changed.collect {
+                        jacocoPattern = SERVICES.split().collect {
                             "${it}/target/jacoco.exec"
                         }.join(',') 
 
@@ -91,8 +59,8 @@ pipeline {
                         if (jacocoFiles) {
                             jacoco(
                                 execPattern: jacocoPattern,
-                                classPattern:  changed.collect { "${it}/target/classes" }.join(','),
-                                sourcePattern: changed.collect { "${it}/src/main/java" }.join(',')
+                                classPattern: SERVICES.split().collect { "${it}/target/classes" }.join(','),
+                                sourcePattern: SERVICES.split().collect { "${it}/src/main/java" }.join(',')
                             )
                         } else {
                             echo "No jacoco files found."
@@ -103,14 +71,9 @@ pipeline {
         }
 
         stage('Build') {
-            when {
-                expression {
-                    return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
-                }
-            }
             steps {
                 script {
-                    def services = env.CHANGED_SERVICES.split(',')
+                    def services = SERVICES.split()
                     for (service in services) {
                         echo "Building: ${service}"
                         sh "./mvnw -pl ${service} -am package -DskipTests"
