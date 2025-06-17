@@ -83,17 +83,17 @@ pipeline {
             steps {
                 script {
                     def services = env.CHANGED_SERVICES.split(',')
-                    
+
                     try {
                         if (services.contains('all')) {
                             echo "Running tests for all modules..."
-                            sh './mvnw clean test jacoco:report'
+                            sh './mvnw clean verify'
                         } else {
                             def modules = services.collect { 
                                 "spring-petclinic-${it}-service" 
                             }.join(',')
                             echo "Running tests for: ${modules}"
-                            sh "./mvnw clean test jacoco:report -pl ${modules} -am"
+                            sh "./mvnw clean verify -pl ${modules} -am"
                         }
                     } catch (Exception e) {
                         currentBuild.result = 'UNSTABLE'
