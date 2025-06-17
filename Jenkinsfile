@@ -128,12 +128,17 @@ pipeline {
                             echo "Failed to publish test results: ${e.message}"
                         }
 
-                        // Publish JaCoCo coverage
+                        // Publish JaCoCo coverage using Coverage Plugin
                         try {
                             echo "Publishing JaCoCo coverage reports"
-                            publishCoverage adapters: [
-                                jacocoAdapter(path: jacocoPatterns.join(','))
-                            ], sourceFileResolver: sourceFiles('STORE_LAST_BUILD')
+                            recordCoverage tools: [jacoco()],
+                                sourceFileResolver: sourceFiles('STORE_LAST_BUILD'),
+                                toolMode: 'REPORT',
+                                skipPublishingChecks: false,
+                                filters: [excludeFile('**/generated-sources/**')],
+                                globalThresholds: [
+                                    [thresholdTarget: 'Line', unhealthyThreshold: 70.0, unstableThreshold: 80.0]
+                                ]
                         } catch (Exception e) {
                             echo "Failed to publish coverage: ${e.message}"
                         }
@@ -247,7 +252,7 @@ pipeline {
 // Helper function để parse JaCoCo coverage
 def getCoverageFromReport(String reportPath) {
     try {
-        // Ưu tiên dùng Python
+        // Using Python or awk to parse the JaCoCo XML report
         def coverage = sh(script: """
             if command -v python3 > /dev/null; then
                 python3 -c "
