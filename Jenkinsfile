@@ -106,15 +106,12 @@ pipeline {
                     script {
                         def services = env.CHANGED_SERVICES.split(',')
                         def testPatterns = []
-                        def jacocoPatterns = []
 
                         if (services.contains('all')) {
                             testPatterns << '**/target/surefire-reports/TEST-*.xml'
-                            jacocoPatterns << '**/target/site/jacoco/jacoco.xml'
                         } else {
                             services.each { service ->
                                 testPatterns << "spring-petclinic-${service}/target/surefire-reports/TEST-*.xml"
-                                jacocoPatterns << "spring-petclinic-${service}/target/site/jacoco/jacoco.xml"
                             }
                         }
 
@@ -126,17 +123,36 @@ pipeline {
                             echo "Failed to publish test results: ${e.message}"
                         }
 
-                        // Publish JaCoCo coverage using Coverage Plugin
+                        // Publish JaCoCo coverage using Coverage Plugin per service
                         try {
-                            echo "Publishing JaCoCo coverage reports"
-                            recordCoverage tools: [jacoco()],
-                                sourceFileResolver: sourceFiles('STORE_LAST_BUILD'),
-                                toolMode: 'REPORT',
-                                skipPublishingChecks: false,
-                                filters: [excludeFile('**/generated-sources/**')],
-                                globalThresholds: [
-                                    [thresholdTarget: 'Line', unhealthyThreshold: 70.0, unstableThreshold: 80.0]
-                                ]
+                            echo "Publishing JaCoCo coverage reports per service"
+                            if (services.contains('all')) {
+                                recordCoverage tools: [jacoco()],
+                                    sourceFileResolver: sourceFiles('STORE_LAST_BUILD'),
+                                    toolMode: 'REPORT',
+                                    skipPublishingChecks: false,
+                                    filters: [excludeFile('**/generated-sources/**')],
+                                    globalThresholds: [
+                                        [thresholdTarget: 'Line', unhealthyThreshold: 70.0, unstableThreshold: 80.0]
+                                    ]
+                            } else {
+                                services.each { service ->
+                                    def reportPath = "spring-petclinic-${service}/target/site/jacoco/jacoco.xml"
+                                    if (fileExists(reportPath)) {
+                                        echo "Publishing coverage for ${service} using path: ${reportPath}"
+                                        recordCoverage tools: [jacoco(pattern: reportPath)],
+                                            sourceFileResolver: sourceFiles('STORE_LAST_BUILD'),
+                                            toolMode: 'REPORT',
+                                            skipPublishingChecks: false,
+                                            filters: [excludeFile('**/generated-sources/**')],
+                                            globalThresholds: [
+                                                [thresholdTarget: 'Line', unhealthyThreshold: 70.0, unstableThreshold: 80.0]
+                                            ]
+                                    } else {
+                                        echo "Coverage report not found for ${service}: ${reportPath}"
+                                    }
+                                }
+                            }
                         } catch (Exception e) {
                             echo "Failed to publish coverage: ${e.message}"
                         }
