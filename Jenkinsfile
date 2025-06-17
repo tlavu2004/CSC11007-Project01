@@ -127,14 +127,29 @@ pipeline {
                         try {
                             echo "Publishing JaCoCo coverage reports per service"
                             if (services.contains('all')) {
-                                recordCoverage tools: [jacoco()],
-                                    skipPublishingChecks: true
+                                recordCoverage(
+                                    tools: [jacoco()],
+                                    sourceFileResolver: sourceFiles('STORE_LAST_BUILD'),
+                                    toolMode: 'REPORT',
+                                    skipPublishingChecks: true,
+                                    globalThresholds: [
+                                        [thresholdTarget: 'Line', unhealthyThreshold: 70.0, unstableThreshold: 80.0]
+                                    ]
+                                )
                             } else {
                                 services.each { service ->
                                     def reportPath = "spring-petclinic-${service}/target/site/jacoco/jacoco.xml"
                                     if (fileExists(reportPath)) {
                                         echo "Publishing coverage for ${service} using path: ${reportPath}"
-                                        recordCoverage tools: [jacocoAdapter(reportPath)], skipPublishingChecks: true
+                                        recordCoverage(
+                                            tools: [jacoco(pattern: reportPath)],
+                                            sourceFileResolver: sourceFiles('STORE_LAST_BUILD'),
+                                            toolMode: 'REPORT',
+                                            skipPublishingChecks: true,
+                                            globalThresholds: [
+                                                [thresholdTarget: 'Line', unhealthyThreshold: 70.0, unstableThreshold: 80.0]
+                                            ]
+                                        )
                                     } else {
                                         echo "Coverage report not found for ${service}: ${reportPath}"
                                     }
