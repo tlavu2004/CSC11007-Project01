@@ -89,9 +89,7 @@ pipeline {
                             echo "Running tests for all modules..."
                             sh './mvnw clean verify'
                         } else {
-                            def modules = services.collect { 
-                                "spring-petclinic-${it}" 
-                            }.join(',')
+                            def modules = services.collect { serviceMap[it] }.join(',')
                             echo "Running tests for: ${modules}"
                             sh "./mvnw clean verify -pl ${modules} -am"
                         }
@@ -151,7 +149,7 @@ pipeline {
             steps {
                 script {
                     def services = env.CHANGED_SERVICES.split(',')
-                    def criticalServices = ['customers', 'visits', 'vets']
+                    def criticalServices = ['customers-service', 'visits-service', 'vets-service']
                     def failedServices = []
 
                     services.each { service ->
@@ -159,11 +157,11 @@ pipeline {
                             def servicesToCheck = service == 'all' ? criticalServices : [service]
                             
                             servicesToCheck.each { svc ->
-                                def reportPath = "spring-petclinic-${svc}/target/site/jacoco/jacoco.xml"
+                                def reportPath = "${serviceMap[svc]}/target/site/jacoco/jacoco.xml"
                                 
                                 if (fileExists(reportPath)) {
                                     def coverage = getCoverageFromReport(reportPath)
-                                    echo "Coverage for ${svc}: ${coverage}%"
+                                    echo "Coverage for ${svc}-service: ${coverage}%"
                                     
                                     if (coverage < env.COVERAGE_THRESHOLD.toDouble()) {
                                         failedServices.add("${svc} (${coverage}%)")
