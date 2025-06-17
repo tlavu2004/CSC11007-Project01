@@ -131,7 +131,6 @@ pipeline {
                                     sourceFileResolver: sourceFiles('STORE_LAST_BUILD'),
                                     toolMode: 'REPORT',
                                     skipPublishingChecks: false,
-                                    filters: [excludeFile('**/generated-sources/**')],
                                     globalThresholds: [
                                         [thresholdTarget: 'Line', unhealthyThreshold: 70.0, unstableThreshold: 80.0]
                                     ]
@@ -144,7 +143,6 @@ pipeline {
                                             sourceFileResolver: sourceFiles('STORE_LAST_BUILD'),
                                             toolMode: 'REPORT',
                                             skipPublishingChecks: false,
-                                            filters: [excludeFile('**/generated-sources/**')],
                                             globalThresholds: [
                                                 [thresholdTarget: 'Line', unhealthyThreshold: 70.0, unstableThreshold: 80.0]
                                             ]
