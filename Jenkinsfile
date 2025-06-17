@@ -40,14 +40,14 @@ pipeline {
                         }
 
                         def serviceMap = [
-                            'genai'     : 'spring-petclinic-genai-service',
-                            'customers' : 'spring-petclinic-customers-service',
-                            'vets'      : 'spring-petclinic-vets-service',
-                            'visits'    : 'spring-petclinic-visits-service',
-                            'gateway'   : 'spring-petclinic-api-gateway',
-                            'discovery' : 'spring-petclinic-discovery-server',
-                            'config'    : 'spring-petclinic-config-server',
-                            'admin'     : 'spring-petclinic-admin-server'
+                            'genai-service'     : 'spring-petclinic-genai-service',
+                            'customers-service' : 'spring-petclinic-customers-service',
+                            'vets-service'      : 'spring-petclinic-vets-service',
+                            'visits-service'    : 'spring-petclinic-visits-service',
+                            'api-gateway'       : 'spring-petclinic-api-gateway',
+                            'discovery-server'  : 'spring-petclinic-discovery-server',
+                            'config-server'     : 'spring-petclinic-config-server',
+                            'admin-server'      : 'spring-petclinic-admin-server'
                         ]
 
                         def changedServices = []
@@ -90,7 +90,7 @@ pipeline {
                             sh './mvnw clean verify'
                         } else {
                             def modules = services.collect { 
-                                "spring-petclinic-${it}-service" 
+                                "spring-petclinic-${it}" 
                             }.join(',')
                             echo "Running tests for: ${modules}"
                             sh "./mvnw clean verify -pl ${modules} -am"
@@ -115,8 +115,8 @@ pipeline {
                             jacocoPatterns << '**/target/site/jacoco/jacoco.xml'
                         } else {
                             services.each { service ->
-                                testPatterns << "spring-petclinic-${service}-service/target/surefire-reports/TEST-*.xml"
-                                jacocoPatterns << "spring-petclinic-${service}-service/target/site/jacoco/jacoco.xml"
+                                testPatterns << "spring-petclinic-${service}/target/surefire-reports/TEST-*.xml"
+                                jacocoPatterns << "spring-petclinic-${service}/target/site/jacoco/jacoco.xml"
                             }
                         }
 
@@ -154,7 +154,7 @@ pipeline {
                             def servicesToCheck = service == 'all' ? criticalServices : [service]
                             
                             servicesToCheck.each { svc ->
-                                def reportPath = "spring-petclinic-${svc}-service/target/site/jacoco/jacoco.xml"
+                                def reportPath = "spring-petclinic-${svc}/target/site/jacoco/jacoco.xml"
                                 
                                 if (fileExists(reportPath)) {
                                     def coverage = getCoverageFromReport(reportPath)
@@ -194,7 +194,7 @@ pipeline {
                             sh './mvnw clean package -DskipTests'
                         } else {
                             def modules = services.collect { 
-                                "spring-petclinic-${it}-service" 
+                                "spring-petclinic-${it}" 
                             }.join(',')
                             echo "Building: ${modules}"
                             sh "./mvnw clean package -DskipTests -pl ${modules} -am"
