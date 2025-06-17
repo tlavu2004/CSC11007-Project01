@@ -134,8 +134,7 @@ pipeline {
                                     def reportPath = "spring-petclinic-${service}/target/site/jacoco/jacoco.xml"
                                     if (fileExists(reportPath)) {
                                         echo "Publishing coverage for ${service} using path: ${reportPath}"
-                                        recordCoverage tools: [jacoco(pattern: reportPath)],
-                                            skipPublishingChecks: true
+                                        recordCoverage tools: [jacocoAdapter(reportPath)], skipPublishingChecks: true
                                     } else {
                                         echo "Coverage report not found for ${service}: ${reportPath}"
                                     }
