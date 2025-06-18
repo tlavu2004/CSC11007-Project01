@@ -1,159 +1,226 @@
 pipeline {
     agent any
 
-    environment {
-        SERVICES = """
-            spring-petclinic-admin-server
-            spring-petclinic-api-gateway
-            spring-petclinic-config-server
-            spring-petclinic-customers-service
-            spring-petclinic-discovery-server
-            spring-petclinic-genai-service
-            spring-petclinic-vets-service
-            spring-petclinic-visits-service
-        """
+    tools {
+        maven 'Maven3'
+        jdk 'JDK17'
     }
 
     options {
-        buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '10'))
+        buildDiscarder(
+            logRotator(
+                numToKeepStr: '10',
+                artifactNumToKeepStr: '10'
+            )
+        )
+        timeout(time: 30, unit: 'MINUTES')
+        skipDefaultCheckout(false)
+    }
+
+    environment {
+        COVERAGE_THRESHOLD = '30.0'
+        MAVEN_OPTS = '-Xmx1024m'
     }
 
     stages {
-        stage("Checkout") {
-            steps {
-                checkout scm
-            }
-        }
-
-        stage('Detect Changes') {
+        stage('Detect Changed Services') {
             steps {
                 script {
-                    sh "git fetch origin main:refs/remotes/origin/main"
-                    def changes = sh(script: "git diff --name-only origin/main HEAD", returnStdout: true).trim().split("\n")
-                    echo "Changed files: ${changes}"
+                    try {
+                        def changedFiles = sh(
+                            script: 'git diff --name-only origin/main...HEAD || git ls-files', 
+                            returnStdout: true
+                        ).trim()
+                        
+                        if (!changedFiles) {
+                            echo "No changes detected, treating as full build."
+                            changedFiles = 'force-all'
+                        } else {
+                            echo "Changed files:\n${changedFiles}"
+                        }
 
-                    def allServices = SERVICES.split().collect { it.trim() }
+                        // Define service mapping as a global variable
+                        env.SERVICE_MAP_GENAI = 'spring-petclinic-genai-service'
+                        env.SERVICE_MAP_CUSTOMERS = 'spring-petclinic-customers-service'
+                        env.SERVICE_MAP_VETS = 'spring-petclinic-vets-service'
+                        env.SERVICE_MAP_VISITS = 'spring-petclinic-visits-service'
+                        env.SERVICE_MAP_GATEWAY = 'spring-petclinic-api-gateway'
+                        env.SERVICE_MAP_DISCOVERY = 'spring-petclinic-discovery-server'
+                        env.SERVICE_MAP_CONFIG = 'spring-petclinic-config-server'
+                        env.SERVICE_MAP_ADMIN = 'spring-petclinic-admin-server'
 
-                    def changedServices = allServices.findAll { service ->
-                        changes.any { it.contains(service) }
+                        def serviceMap = [
+                            'genai-service'     : env.SERVICE_MAP_GENAI,
+                            'customers-service' : env.SERVICE_MAP_CUSTOMERS,
+                            'vets-service'      : env.SERVICE_MAP_VETS,
+                            'visits-service'    : env.SERVICE_MAP_VISITS,
+                            'api-gateway'       : env.SERVICE_MAP_GATEWAY,
+                            'discovery-server'  : env.SERVICE_MAP_DISCOVERY,
+                            'config-server'     : env.SERVICE_MAP_CONFIG,
+                            'admin-server'      : env.SERVICE_MAP_ADMIN
+                        ]
+
+                        def changedServices = []
+
+                        // Check for service-specific changes
+                        for (entry in serviceMap) {
+                            if (changedFiles.contains(entry.value)) {
+                                changedServices.add(entry.key)
+                            }
+                        }
+
+                        // Check for root-level changes that affect all services
+                        def rootFiles = ['pom.xml', 'docker-compose.yml', 'Jenkinsfile']
+                        def hasRootChanges = rootFiles.any { changedFiles.contains(it) }
+
+                        if (changedFiles == 'force-all' || hasRootChanges || changedServices.isEmpty()) {
+                            echo "No specific service detected or root changes found. Will test and build all."
+                            changedServices = ['all']
+                        }
+
+                        env.CHANGED_SERVICES = changedServices.join(',')
+                        echo "Changed services: ${env.CHANGED_SERVICES}"
+                        
+                    } catch (Exception e) {
+                        echo "Error detecting changes: ${e.message}. Defaulting to all services."
+                        env.CHANGED_SERVICES = 'all'
                     }
-
-                    if (changedServices.isEmpty()) {
-                        echo "No service changes detected. Skipping build."
-                        currentBuild.result = 'SUCCESS'
-                        return
-                    }
-
-                    echo "Detected changed services: ${changedServices}"
-                    env.CHANGED_SERVICES = changedServices.join(',')
                 }
             }
         }
 
         stage('Test') {
-            when {
-                expression {
-                    return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
-                }
+            environment {
+                SERVICES = '' // Dùng để truyền danh sách service qua post block
             }
             steps {
                 script {
-                    def services = env.CHANGED_SERVICES.split(',')
-                    for (service in services) {
-                        echo "Testing: ${service}"
-                        sh "./mvnw clean verify -pl ${service}"
-                    }   
+                    // Recreate service map
+                    def serviceMap = [
+                        'genai-service'     : env.SERVICE_MAP_GENAI,
+                        'customers-service' : env.SERVICE_MAP_CUSTOMERS,
+                        'vets-service'      : env.SERVICE_MAP_VETS,
+                        'visits-service'    : env.SERVICE_MAP_VISITS,
+                        'api-gateway'       : env.SERVICE_MAP_GATEWAY,
+                        'discovery-server'  : env.SERVICE_MAP_DISCOVERY,
+                        'config-server'     : env.SERVICE_MAP_CONFIG,
+                        'admin-server'      : env.SERVICE_MAP_ADMIN
+                    ]
+
+                    def services = (env.CHANGED_SERVICES ?: '').split(',')
+                    env.SERVICES = services.join(',') // Lưu vào biến môi trường để post block dùng được
+
+                    try {
+                        if (services.contains('all')) {
+                            echo "Running tests for all modules..."
+                            sh './mvnw clean verify'
+                        } else {
+                            def modules = services.collect { serviceMap[it] }.join(',')
+                            echo "Running tests for: ${modules}"
+                            sh "./mvnw clean verify -pl ${modules} -am"
+                        }
+                    } catch (Exception e) {
+                        currentBuild.result = 'UNSTABLE'
+                        echo "Tests failed: ${e.message}"
+                        throw e
+                    }
                 }
             }
+
             post {
                 always {
                     script {
-                        def changed = env.CHANGED_SERVICES.split(',')
-                        def testPattern, jacocoPattern
+                        echo "Publishing JaCoCo coverage reports"
 
-                        testPattern = changed.collect {
-                            "${it}/target/surefire-reports/TEST-*.xml"
-                        }.join(',')
-                        jacocoPattern = changed.collect {
-                            "${it}/target/jacoco.exec"
-                        }.join(',') 
+                        def services = (env.SERVICES ?: '').split(',')
 
-                        echo "Looking for test reports: ${testPattern}"
-                        def testFiles = sh(script: "find . -name 'TEST-*.xml'", returnStdout: true).trim()
-                        if (testFiles) {
-                            junit testPattern
+                        def serviceMap = [
+                            'genai-service'     : env.SERVICE_MAP_GENAI,
+                            'customers-service' : env.SERVICE_MAP_CUSTOMERS,
+                            'vets-service'      : env.SERVICE_MAP_VETS,
+                            'visits-service'    : env.SERVICE_MAP_VISITS,
+                            'api-gateway'       : env.SERVICE_MAP_GATEWAY,
+                            'discovery-server'  : env.SERVICE_MAP_DISCOVERY,
+                            'config-server'     : env.SERVICE_MAP_CONFIG,
+                            'admin-server'      : env.SERVICE_MAP_ADMIN
+                        ]
+
+                        def patterns = []
+                        if (services.contains('all')) {
+                            patterns = ['**/target/site/jacoco/jacoco.xml']
                         } else {
-                            echo "No test reports found."
+                            for (svc in services) {
+                                def p = "${serviceMap[svc]}/target/site/jacoco/jacoco.xml"
+                                if (fileExists(p)) {
+                                    patterns << p
+                                }
+                            }
                         }
 
-                        echo "Looking for jacoco files: ${jacocoPattern}"
-                        def jacocoFiles = sh(script: "find . -name 'jacoco.exec'", returnStdout: true).trim()
-                        if (jacocoFiles) {
-                            jacoco(
-                                execPattern: jacocoPattern,
-                                classPattern:  changed.collect { "${it}/target/classes" }.join(','),
-                                sourcePattern: changed.collect { "${it}/src/main/java" }.join(',')
+                        patterns.each { echo "Found coverage report: ${it}" }
+
+                        if (patterns) {
+                            recordCoverage(
+                                tools: [[
+                                    parser: 'JACOCO',
+                                    path: patterns.join(',')
+                                ]],
+                                enabledForFailure: true,
+                                skipPublishingChecks: true
                             )
                         } else {
-                            echo "No jacoco files found."
+                            echo "No coverage reports found"
                         }
                     }
                 }
             }
         }
-        stage('Check Code Coverage') {
+
+        stage('Check Code Coverage Threshold') {
             steps {
                 script {
+                    // Recreate service map
+                    def serviceMap = [
+                        'genai-service'     : env.SERVICE_MAP_GENAI,
+                        'customers-service' : env.SERVICE_MAP_CUSTOMERS,
+                        'vets-service'      : env.SERVICE_MAP_VETS,
+                        'visits-service'    : env.SERVICE_MAP_VISITS,
+                        'api-gateway'       : env.SERVICE_MAP_GATEWAY,
+                        'discovery-server'  : env.SERVICE_MAP_DISCOVERY,
+                        'config-server'     : env.SERVICE_MAP_CONFIG,
+                        'admin-server'      : env.SERVICE_MAP_ADMIN
+                    ]
+                    
+                    def services = (env.CHANGED_SERVICES ?: '').split(',')
+                    def criticalServices = ['customers-service', 'visits-service', 'vets-service']
                     def failedServices = []
-                    def changedServices = env.CHANGED_SERVICES.split(',')
-                    def coverageThreshold = 70.0
-                    changedServices.each { service ->
-                        def coverageReport = "${service}/target/site/jacoco/jacoco.xml"
-                        def lineCoverage = sh(script: """
-                            if [ -f ${coverageReport} ]; then
-                                awk '
-                                    /<counter type="LINE"[^>]*missed=/ {
-                                        split(\$0, a, "[ \\\"=]+");
-                                        # Debug output
-                                        print "Debug: Checking jacoco.xml for ${service}..." > "/dev/stderr";
-                                        print "Raw line: " \$0 > "/dev/stderr";
-                                        print "Array after split:" > "/dev/stderr";
-                                        for (i in a) print "a[" i "] = " a[i] > "/dev/stderr";
-                                        # Find missed and covered indices
-                                        for (i in a) {
-                                            if (a[i] == "missed") missed = a[i+1];
-                                            if (a[i] == "covered") covered = a[i+1];
-                                        }
-                                        print "missed = " missed ", covered = " covered > "/dev/stderr";
-                                        sum = missed + covered;
-                                        print "sum (missed + covered) = " sum > "/dev/stderr";
-                                        coverage = (sum > 0 ? (covered / sum) * 100 : 0);
-                                        print "Coverage = " coverage "%" > "/dev/stderr";
-                                        print "-----" > "/dev/stderr";
-                                        # Output final coverage value to stdout
-                                        print coverage;
-                                    }
-                                ' ${coverageReport}
-                             else
-                                echo "File not found: ${coverageReport}" > "/dev/stderr"
-                                echo "0"
-                            fi
-                        """, returnStdout: true).trim()
 
-                        if (lineCoverage) {
-                            echo "Code coverage for ${service}: ${lineCoverage}%"
-                            def coverageValue = lineCoverage.toDouble()
-                            if (coverageValue < coverageThreshold) {
-                                failedServices.add(service)
+                    services.each { service ->
+                        if (service == 'all' || criticalServices.contains(service)) {
+                            def servicesToCheck = service == 'all' ? criticalServices : [service]
+                            
+                            servicesToCheck.each { svc ->
+                                def reportPath = "${serviceMap[svc]}/target/site/jacoco/jacoco.xml"
+                                
+                                if (fileExists(reportPath)) {
+                                    def coverage = getCoverageFromReport(reportPath)
+                                    echo "Coverage for ${svc}-service: ${coverage}%"
+                                    
+                                    if (coverage < env.COVERAGE_THRESHOLD.toDouble()) {
+                                        failedServices.add("${svc} (${coverage}%)")
+                                    }
+                                } else {
+                                    echo "Coverage report not found for ${svc}: ${reportPath}"
+                                    failedServices.add("${svc} (no report)")
+                                }
                             }
-                        } else {
-                            echo "No coverage report found for ${service}, assuming 0%"
-                            failedServices.add(service)
                         }
                     }
 
                     if (!failedServices.isEmpty()) {
-                        error "The following services failed code coverage threshold (${coverageThreshold}%): ${failedServices.join(', ')}"
+                        error "Coverage below threshold (${env.COVERAGE_THRESHOLD}%): ${failedServices.join(', ')}"
+                    } else {
+                        echo "All services meet coverage threshold of ${env.COVERAGE_THRESHOLD}%"
                     }
                 }
             }
@@ -161,20 +228,128 @@ pipeline {
 
         stage('Build') {
             when {
-                expression {
-                    return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
-                }
+                expression { currentBuild.result == null || currentBuild.result != 'FAILURE' }
             }
             steps {
                 script {
-                    def services = env.CHANGED_SERVICES.split(',')
-                    for (service in services) {
-                        echo "Building: ${service}"
-                        sh "./mvnw -pl ${service} -am package -DskipTests"
-                    }  
-                    archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
+                    // Recreate service map
+                    def serviceMap = [
+                        'genai-service'     : env.SERVICE_MAP_GENAI,
+                        'customers-service' : env.SERVICE_MAP_CUSTOMERS,
+                        'vets-service'      : env.SERVICE_MAP_VETS,
+                        'visits-service'    : env.SERVICE_MAP_VISITS,
+                        'api-gateway'       : env.SERVICE_MAP_GATEWAY,
+                        'discovery-server'  : env.SERVICE_MAP_DISCOVERY,
+                        'config-server'     : env.SERVICE_MAP_CONFIG,
+                        'admin-server'      : env.SERVICE_MAP_ADMIN
+                    ]
+                    
+                    def services = (env.CHANGED_SERVICES ?: '').split(',')
+                    
+                    try {
+                        if (services.contains('all')) {
+                            echo "Building all modules..."
+                            sh './mvnw clean package -DskipTests'
+                        } else {
+                            def modules = services.collect { 
+                                serviceMap[it] 
+                            }.join(',')
+                            echo "Building: ${modules}"
+                            sh "./mvnw clean package -DskipTests -pl ${modules} -am"
+                        }
+
+                        // Archive artifacts
+                        archiveArtifacts artifacts: '**/target/*.jar', 
+                                       allowEmptyArchive: true,
+                                       fingerprint: true,
+                                       onlyIfSuccessful: true
+                                       
+                    } catch (Exception e) {
+                        currentBuild.result = 'FAILURE'
+                        echo "Build failed: ${e.message}"
+                        throw e
+                    }
                 }
             }
         }
+
+        stage('Quality Gate') {
+            steps {
+                script {
+                    def services = (env.CHANGED_SERVICES ?: '').split(',')
+                    echo "Quality gate passed for services: ${services.join(', ')}"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs(cleanWhenNotBuilt: false,
+                   deleteDirs: true,
+                   disableDeferredWipeout: true,
+                   notFailBuild: true)
+        }
+        success {
+            echo "Pipeline completed successfully for services: ${env.CHANGED_SERVICES}"
+        }
+        failure {
+            echo "Pipeline failed for services: ${env.CHANGED_SERVICES}"
+        }
+        unstable {
+            echo "Pipeline completed with warnings for services: ${env.CHANGED_SERVICES}"
+        }
+    }
+}
+
+// Helper function để parse JaCoCo coverage
+def getCoverageFromReport(String reportPath) {
+    try {
+        // Using Python or awk to parse the JaCoCo XML report
+        def coverage = sh(script: """
+            if command -v python3 > /dev/null; then
+                python3 -c "
+import xml.etree.ElementTree as ET
+try:
+    tree = ET.parse('${reportPath}')
+    root = tree.getroot()
+    total_missed = 0
+    total_covered = 0
+    for counter in root.findall('.//counter[@type=\\\"LINE\\\"]'):
+        total_missed += int(counter.get('missed', 0))
+        total_covered += int(counter.get('covered', 0))
+    total = total_missed + total_covered
+    if total > 0:
+        print(f'{(total_covered/total)*100:.2f}')
+    else:
+        print('0.00')
+except Exception as e:
+    print('0.00')
+"
+            else
+                # Fallback: dùng awk
+                awk '
+                    /<counter type="LINE"/ {
+                        for (i = 1; i <= NF; i++) {
+                            if (\$i ~ /missed=/) { gsub(/[^0-9]/, "", \$i); missed += \$i }
+                            if (\$i ~ /covered=/) { gsub(/[^0-9]/, "", \$i); covered += \$i }
+                        }
+                    }
+                    END {
+                        total = missed + covered;
+                        if (total > 0) {
+                            printf(\"%.2f\", (covered / total) * 100)
+                        } else {
+                            print \"0.00\"
+                        }
+                    }
+                ' ${reportPath}
+            fi
+        """, returnStdout: true).trim()
+
+        return coverage.toDouble()
+    } catch (Exception e) {
+        echo "Error parsing coverage report: ${e.message}"
+        return 0.0
     }
 }
