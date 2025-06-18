@@ -107,7 +107,7 @@ pipeline {
                         'admin-server'      : env.SERVICE_MAP_ADMIN
                     ]
 
-                    def services = env.CHANGED_SERVICES.split(',')
+                    def services = (env.CHANGED_SERVICES ?: '').split(',')
                     env.SERVICES = services.join(',') // Lưu vào biến môi trường để post block dùng được
 
                     try {
@@ -132,7 +132,7 @@ pipeline {
                     script {
                         echo "Publishing JaCoCo coverage reports"
 
-                        def services = env.SERVICES.split(',')
+                        def services = (env.SERVICES ?: '').split(',')
 
                         def serviceMap = [
                             'genai-service'     : env.SERVICE_MAP_GENAI,
@@ -186,7 +186,7 @@ pipeline {
                         'admin-server'      : env.SERVICE_MAP_ADMIN
                     ]
                     
-                    def services = env.CHANGED_SERVICES.split(',')
+                    def services = (env.CHANGED_SERVICES ?: '').split(',')
                     def criticalServices = ['customers-service', 'visits-service', 'vets-service']
                     def failedServices = []
 
@@ -239,7 +239,7 @@ pipeline {
                         'admin-server'      : env.SERVICE_MAP_ADMIN
                     ]
                     
-                    def services = env.CHANGED_SERVICES.split(',')
+                    def services = (env.CHANGED_SERVICES ?: '').split(',')
                     
                     try {
                         if (services.contains('all')) {
@@ -271,7 +271,7 @@ pipeline {
         stage('Quality Gate') {
             steps {
                 script {
-                    def services = env.CHANGED_SERVICES.split(',')
+                    def services = (env.CHANGED_SERVICES ?: '').split(',')
                     echo "Quality gate passed for services: ${services.join(', ')}"
                 }
             }
