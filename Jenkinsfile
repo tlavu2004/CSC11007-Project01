@@ -90,6 +90,9 @@ pipeline {
         }
 
         stage('Test') {
+            environment {
+                SERVICES = '' // Dùng để truyền danh sách service qua post block
+            }
             steps {
                 script {
                     // Recreate service map
@@ -103,8 +106,9 @@ pipeline {
                         'config-server'     : env.SERVICE_MAP_CONFIG,
                         'admin-server'      : env.SERVICE_MAP_ADMIN
                     ]
-                    
+
                     def services = env.CHANGED_SERVICES.split(',')
+                    env.SERVICES = services.join(',') // Lưu vào biến môi trường để post block dùng được
 
                     try {
                         if (services.contains('all')) {
@@ -128,6 +132,19 @@ pipeline {
                     script {
                         echo "Publishing JaCoCo coverage reports"
 
+                        def services = env.SERVICES.split(',')
+
+                        def serviceMap = [
+                            'genai-service'     : env.SERVICE_MAP_GENAI,
+                            'customers-service' : env.SERVICE_MAP_CUSTOMERS,
+                            'vets-service'      : env.SERVICE_MAP_VETS,
+                            'visits-service'    : env.SERVICE_MAP_VISITS,
+                            'api-gateway'       : env.SERVICE_MAP_GATEWAY,
+                            'discovery-server'  : env.SERVICE_MAP_DISCOVERY,
+                            'config-server'     : env.SERVICE_MAP_CONFIG,
+                            'admin-server'      : env.SERVICE_MAP_ADMIN
+                        ]
+
                         def patterns = services.contains('all')
                             ? ['**/target/site/jacoco/jacoco.xml']
                             : services.collect { svc ->
@@ -136,14 +153,15 @@ pipeline {
                             }.findAll()
 
                         patterns.each { echo "Found coverage report: ${it}" }
+
                         if (patterns) {
                             recordCoverage(
-                            tools: [[
-                                parser: 'JACOCO',
-                                path: patterns.join(',')
-                            ]],
-                            enabledForFailure: true,
-                            skipPublishingChecks: true
+                                tools: [[
+                                    parser: 'JACOCO',
+                                    path: patterns.join(',')
+                                ]],
+                                enabledForFailure: true,
+                                skipPublishingChecks: true
                             )
                         } else {
                             echo "No coverage reports found"
