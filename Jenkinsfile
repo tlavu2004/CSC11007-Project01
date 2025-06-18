@@ -69,6 +69,7 @@ pipeline {
                         }
 
                         env.CHANGED_SERVICES = changedServices.join(',')
+                        env.SERVICE_MAP = groovy.json.JsonBuilder(serviceMap).toString()
                         echo "Changed services: ${env.CHANGED_SERVICES}"
                         
                     } catch (Exception e) {
@@ -82,6 +83,7 @@ pipeline {
         stage('Test') {
             steps {
                 script {
+                    def serviceMap = readJSON text: env.SERVICE_MAP
                     def services = env.CHANGED_SERVICES.split(',')
 
                     try {
@@ -123,27 +125,46 @@ pipeline {
                             echo "Failed to publish test results: ${e.message}"
                         }
 
-                        // Publish JaCoCo coverage using Coverage Plugin per service
+                        // Publish JaCoCo coverage using Coverage Plugin
                         try {
-                            echo "Publishing JaCoCo coverage reports per service"
+                            def serviceMap = readJSON text: env.SERVICE_MAP
+                            echo "Publishing JaCoCo coverage reports"
 
                             if (services.contains('all')) {
+                                // For all services, use default pattern
                                 recordCoverage(
-                                    tools: [jacoco()],
+                                    enabledForFailure: true,
+                                    tools: [[
+                                        $class: 'JacocoReportAdapter',
+                                        path: '**/target/site/jacoco/jacoco.xml'
+                                    ]],
                                     skipPublishingChecks: true
                                 )
                             } else {
+                                // For specific services, collect all patterns
+                                def coveragePatterns = []
                                 services.each { service ->
-                                    def reportPath = "spring-petclinic-${service}/target/site/jacoco/jacoco.xml"
+                                    def serviceName = serviceMap[service]
+                                    def reportPath = "${serviceName}/target/site/jacoco/jacoco.xml"
                                     if (fileExists(reportPath)) {
-                                        echo "Publishing coverage for ${service} using path: ${reportPath}"
-                                        recordCoverage(
-                                            tools: [jacoco(pattern: reportPath)],
-                                            skipPublishingChecks: true
-                                        )
+                                        coveragePatterns << reportPath
+                                        echo "Found coverage report for ${service}: ${reportPath}"
                                     } else {
                                         echo "Coverage report not found for ${service}: ${reportPath}"
                                     }
+                                }
+                                
+                                if (!coveragePatterns.isEmpty()) {
+                                    recordCoverage(
+                                        enabledForFailure: true,
+                                        tools: [[
+                                            $class: 'JacocoReportAdapter',
+                                            path: coveragePatterns.join(',')
+                                        ]],
+                                        skipPublishingChecks: true
+                                    )
+                                } else {
+                                    echo "No coverage reports found for changed services"
                                 }
                             }
                         } catch (Exception e) {
@@ -158,6 +179,7 @@ pipeline {
         stage('Check Code Coverage Threshold') {
             steps {
                 script {
+                    def serviceMap = readJSON text: env.SERVICE_MAP
                     def services = env.CHANGED_SERVICES.split(',')
                     def criticalServices = ['customers-service', 'visits-service', 'vets-service']
                     def failedServices = []
@@ -199,6 +221,7 @@ pipeline {
             }
             steps {
                 script {
+                    def serviceMap = readJSON text: env.SERVICE_MAP
                     def services = env.CHANGED_SERVICES.split(',')
                     
                     try {
@@ -207,7 +230,7 @@ pipeline {
                             sh './mvnw clean package -DskipTests'
                         } else {
                             def modules = services.collect { 
-                                "spring-petclinic-${it}" 
+                                serviceMap[it] 
                             }.join(',')
                             echo "Building: ${modules}"
                             sh "./mvnw clean package -DskipTests -pl ${modules} -am"
