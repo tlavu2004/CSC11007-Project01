@@ -145,12 +145,17 @@ pipeline {
                             'admin-server'      : env.SERVICE_MAP_ADMIN
                         ]
 
-                        def patterns = services.contains('all')
-                            ? ['**/target/site/jacoco/jacoco.xml']
-                            : services.collect { svc ->
+                        def patterns = []
+                        if (services.contains('all')) {
+                            patterns = ['**/target/site/jacoco/jacoco.xml']
+                        } else {
+                            for (svc in services) {
                                 def p = "${serviceMap[svc]}/target/site/jacoco/jacoco.xml"
-                                fileExists(p) ? p : null
-                            }.findAll()
+                                if (fileExists(p)) {
+                                    patterns << p
+                                }
+                            }
+                        }
 
                         patterns.each { echo "Found coverage report: ${it}" }
 
