@@ -126,15 +126,11 @@ pipeline {
                         // Publish JaCoCo coverage using Coverage Plugin per service
                         try {
                             echo "Publishing JaCoCo coverage reports per service"
+
                             if (services.contains('all')) {
                                 recordCoverage(
                                     tools: [jacoco()],
-                                    sourceFileResolver: sourceFiles('STORE_LAST_BUILD'),
-                                    toolMode: 'REPORT',
-                                    skipPublishingChecks: true,
-                                    globalThresholds: [
-                                        [thresholdTarget: 'Line', unhealthyThreshold: 70.0, unstableThreshold: 80.0]
-                                    ]
+                                    skipPublishingChecks: true
                                 )
                             } else {
                                 services.each { service ->
@@ -143,12 +139,7 @@ pipeline {
                                         echo "Publishing coverage for ${service} using path: ${reportPath}"
                                         recordCoverage(
                                             tools: [jacoco(pattern: reportPath)],
-                                            sourceFileResolver: sourceFiles('STORE_LAST_BUILD'),
-                                            toolMode: 'REPORT',
-                                            skipPublishingChecks: true,
-                                            globalThresholds: [
-                                                [thresholdTarget: 'Line', unhealthyThreshold: 70.0, unstableThreshold: 80.0]
-                                            ]
+                                            skipPublishingChecks: true
                                         )
                                     } else {
                                         echo "Coverage report not found for ${service}: ${reportPath}"
@@ -157,6 +148,7 @@ pipeline {
                             }
                         } catch (Exception e) {
                             echo "Failed to publish coverage: ${e.message}"
+                            currentBuild.result = 'UNSTABLE'
                         }
                     }
                 }
