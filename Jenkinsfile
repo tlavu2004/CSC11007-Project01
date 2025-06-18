@@ -126,81 +126,27 @@ pipeline {
             post {
                 always {
                     script {
-                        def services = env.CHANGED_SERVICES.split(',')
-                        def testPatterns = []
+                        echo "Publishing JaCoCo coverage reports"
 
-                        if (services.contains('all')) {
-                            testPatterns << '**/target/surefire-reports/TEST-*.xml'
+                        def patterns = services.contains('all')
+                            ? ['**/target/site/jacoco/jacoco.xml']
+                            : services.collect { svc ->
+                                def p = "${serviceMap[svc]}/target/site/jacoco/jacoco.xml"
+                                fileExists(p) ? p : null
+                            }.findAll()
+
+                        patterns.each { echo "Found coverage report: ${it}" }
+                        if (patterns) {
+                            recordCoverage(
+                            tools: [[
+                                parser: 'JACOCO',
+                                path: patterns.join(',')
+                            ]],
+                            enabledForFailure: true,
+                            skipPublishingChecks: true
+                            )
                         } else {
-                            services.each { service ->
-                                testPatterns << "spring-petclinic-${service}/target/surefire-reports/TEST-*.xml"
-                            }
-                        }
-
-                        // Publish test results
-                        try {
-                            echo "Publishing test results: ${testPatterns.join(',')}"
-                            junit testResults: testPatterns.join(','), allowEmptyResults: true
-                        } catch (Exception e) {
-                            echo "Failed to publish test results: ${e.message}"
-                        }
-
-                        // Publish JaCoCo coverage using Coverage Plugin
-                        try {
-                            // Recreate service map for coverage
-                            def serviceMap = [
-                                'genai-service'     : env.SERVICE_MAP_GENAI,
-                                'customers-service' : env.SERVICE_MAP_CUSTOMERS,
-                                'vets-service'      : env.SERVICE_MAP_VETS,
-                                'visits-service'    : env.SERVICE_MAP_VISITS,
-                                'api-gateway'       : env.SERVICE_MAP_GATEWAY,
-                                'discovery-server'  : env.SERVICE_MAP_DISCOVERY,
-                                'config-server'     : env.SERVICE_MAP_CONFIG,
-                                'admin-server'      : env.SERVICE_MAP_ADMIN
-                            ]
-                            
-                            echo "Publishing JaCoCo coverage reports"
-
-                            if (services.contains('all')) {
-                                // For all services, use default pattern
-                                recordCoverage(
-                                    enabledForFailure: true,
-                                    tools: [[
-                                        $class: 'JacocoReportAdapter',
-                                        path: '**/target/site/jacoco/jacoco.xml'
-                                    ]],
-                                    skipPublishingChecks: true
-                                )
-                            } else {
-                                // For specific services, collect all patterns
-                                def coveragePatterns = []
-                                services.each { service ->
-                                    def serviceName = serviceMap[service]
-                                    def reportPath = "${serviceName}/target/site/jacoco/jacoco.xml"
-                                    if (fileExists(reportPath)) {
-                                        coveragePatterns << reportPath
-                                        echo "Found coverage report for ${service}: ${reportPath}"
-                                    } else {
-                                        echo "Coverage report not found for ${service}: ${reportPath}"
-                                    }
-                                }
-                                
-                                if (!coveragePatterns.isEmpty()) {
-                                    recordCoverage(
-                                        enabledForFailure: true,
-                                        tools: [[
-                                            $class: 'JacocoReportAdapter',
-                                            path: coveragePatterns.join(',')
-                                        ]],
-                                        skipPublishingChecks: true
-                                    )
-                                } else {
-                                    echo "No coverage reports found for changed services"
-                                }
-                            }
-                        } catch (Exception e) {
-                            echo "Failed to publish coverage: ${e.message}"
-                            currentBuild.result = 'UNSTABLE'
+                            echo "No coverage reports found"
                         }
                     }
                 }
