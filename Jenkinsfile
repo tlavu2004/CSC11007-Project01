@@ -39,15 +39,25 @@ pipeline {
                             echo "Changed files:\n${changedFiles}"
                         }
 
+                        // Define service mapping as a global variable
+                        env.SERVICE_MAP_GENAI = 'spring-petclinic-genai-service'
+                        env.SERVICE_MAP_CUSTOMERS = 'spring-petclinic-customers-service'
+                        env.SERVICE_MAP_VETS = 'spring-petclinic-vets-service'
+                        env.SERVICE_MAP_VISITS = 'spring-petclinic-visits-service'
+                        env.SERVICE_MAP_GATEWAY = 'spring-petclinic-api-gateway'
+                        env.SERVICE_MAP_DISCOVERY = 'spring-petclinic-discovery-server'
+                        env.SERVICE_MAP_CONFIG = 'spring-petclinic-config-server'
+                        env.SERVICE_MAP_ADMIN = 'spring-petclinic-admin-server'
+
                         def serviceMap = [
-                            'genai-service'     : 'spring-petclinic-genai-service',
-                            'customers-service' : 'spring-petclinic-customers-service',
-                            'vets-service'      : 'spring-petclinic-vets-service',
-                            'visits-service'    : 'spring-petclinic-visits-service',
-                            'api-gateway'       : 'spring-petclinic-api-gateway',
-                            'discovery-server'  : 'spring-petclinic-discovery-server',
-                            'config-server'     : 'spring-petclinic-config-server',
-                            'admin-server'      : 'spring-petclinic-admin-server'
+                            'genai-service'     : env.SERVICE_MAP_GENAI,
+                            'customers-service' : env.SERVICE_MAP_CUSTOMERS,
+                            'vets-service'      : env.SERVICE_MAP_VETS,
+                            'visits-service'    : env.SERVICE_MAP_VISITS,
+                            'api-gateway'       : env.SERVICE_MAP_GATEWAY,
+                            'discovery-server'  : env.SERVICE_MAP_DISCOVERY,
+                            'config-server'     : env.SERVICE_MAP_CONFIG,
+                            'admin-server'      : env.SERVICE_MAP_ADMIN
                         ]
 
                         def changedServices = []
@@ -69,7 +79,6 @@ pipeline {
                         }
 
                         env.CHANGED_SERVICES = changedServices.join(',')
-                        env.SERVICE_MAP = groovy.json.JsonBuilder(serviceMap).toString()
                         echo "Changed services: ${env.CHANGED_SERVICES}"
                         
                     } catch (Exception e) {
@@ -83,7 +92,18 @@ pipeline {
         stage('Test') {
             steps {
                 script {
-                    def serviceMap = readJSON text: env.SERVICE_MAP
+                    // Recreate service map
+                    def serviceMap = [
+                        'genai-service'     : env.SERVICE_MAP_GENAI,
+                        'customers-service' : env.SERVICE_MAP_CUSTOMERS,
+                        'vets-service'      : env.SERVICE_MAP_VETS,
+                        'visits-service'    : env.SERVICE_MAP_VISITS,
+                        'api-gateway'       : env.SERVICE_MAP_GATEWAY,
+                        'discovery-server'  : env.SERVICE_MAP_DISCOVERY,
+                        'config-server'     : env.SERVICE_MAP_CONFIG,
+                        'admin-server'      : env.SERVICE_MAP_ADMIN
+                    ]
+                    
                     def services = env.CHANGED_SERVICES.split(',')
 
                     try {
@@ -127,7 +147,18 @@ pipeline {
 
                         // Publish JaCoCo coverage using Coverage Plugin
                         try {
-                            def serviceMap = readJSON text: env.SERVICE_MAP
+                            // Recreate service map for coverage
+                            def serviceMap = [
+                                'genai-service'     : env.SERVICE_MAP_GENAI,
+                                'customers-service' : env.SERVICE_MAP_CUSTOMERS,
+                                'vets-service'      : env.SERVICE_MAP_VETS,
+                                'visits-service'    : env.SERVICE_MAP_VISITS,
+                                'api-gateway'       : env.SERVICE_MAP_GATEWAY,
+                                'discovery-server'  : env.SERVICE_MAP_DISCOVERY,
+                                'config-server'     : env.SERVICE_MAP_CONFIG,
+                                'admin-server'      : env.SERVICE_MAP_ADMIN
+                            ]
+                            
                             echo "Publishing JaCoCo coverage reports"
 
                             if (services.contains('all')) {
@@ -179,7 +210,18 @@ pipeline {
         stage('Check Code Coverage Threshold') {
             steps {
                 script {
-                    def serviceMap = readJSON text: env.SERVICE_MAP
+                    // Recreate service map
+                    def serviceMap = [
+                        'genai-service'     : env.SERVICE_MAP_GENAI,
+                        'customers-service' : env.SERVICE_MAP_CUSTOMERS,
+                        'vets-service'      : env.SERVICE_MAP_VETS,
+                        'visits-service'    : env.SERVICE_MAP_VISITS,
+                        'api-gateway'       : env.SERVICE_MAP_GATEWAY,
+                        'discovery-server'  : env.SERVICE_MAP_DISCOVERY,
+                        'config-server'     : env.SERVICE_MAP_CONFIG,
+                        'admin-server'      : env.SERVICE_MAP_ADMIN
+                    ]
+                    
                     def services = env.CHANGED_SERVICES.split(',')
                     def criticalServices = ['customers-service', 'visits-service', 'vets-service']
                     def failedServices = []
@@ -221,7 +263,18 @@ pipeline {
             }
             steps {
                 script {
-                    def serviceMap = readJSON text: env.SERVICE_MAP
+                    // Recreate service map
+                    def serviceMap = [
+                        'genai-service'     : env.SERVICE_MAP_GENAI,
+                        'customers-service' : env.SERVICE_MAP_CUSTOMERS,
+                        'vets-service'      : env.SERVICE_MAP_VETS,
+                        'visits-service'    : env.SERVICE_MAP_VISITS,
+                        'api-gateway'       : env.SERVICE_MAP_GATEWAY,
+                        'discovery-server'  : env.SERVICE_MAP_DISCOVERY,
+                        'config-server'     : env.SERVICE_MAP_CONFIG,
+                        'admin-server'      : env.SERVICE_MAP_ADMIN
+                    ]
+                    
                     def services = env.CHANGED_SERVICES.split(',')
                     
                     try {
