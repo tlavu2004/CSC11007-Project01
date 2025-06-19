@@ -81,19 +81,17 @@ pipeline {
                         env.CHANGED_SERVICES = changedServices.join(',')
                         echo "Changed services: ${env.CHANGED_SERVICES}"
                         
-                        // **FIXED: Only check test files for CRITICAL services (customers, vets, visits)**
+                        // Check for services without test files (only for services that will be tested)
                         def servicesWithoutTests = []
-                        def criticalServices = ['customers-service', 'vets-service', 'visits-service']
+                        def servicesToCheck = []
                         
-                        def servicesToValidate = []
                         if (changedServices.contains('all')) {
-                            servicesToValidate = criticalServices // Only check critical services
+                            servicesToCheck = serviceMap.keySet() as List
                         } else {
-                            // Only check critical services that were changed
-                            servicesToValidate = changedServices.findAll { criticalServices.contains(it) }
+                            servicesToCheck = changedServices
                         }
                         
-                        servicesToValidate.each { service ->
+                        servicesToCheck.each { service ->
                             def testDir = "${serviceMap[service]}/src/test/java"
                             if (!fileExists(testDir)) {
                                 servicesWithoutTests.add(service)
@@ -112,7 +110,7 @@ pipeline {
                         
                         env.SERVICES_WITHOUT_TESTS = servicesWithoutTests.join(',')
                         if (!servicesWithoutTests.isEmpty()) {
-                            echo "⚠️  Critical services without test files: ${servicesWithoutTests.join(', ')}"
+                            echo "Services without test files: ${servicesWithoutTests.join(', ')}"
                         }
                         
                     } catch (Exception e) {
@@ -126,22 +124,10 @@ pipeline {
 
         stage('Test') {
             environment {
-                SERVICES = '' // Dùng để truyền danh sách service qua post block
+                SERVICES = '' // Using environment variables to map services
             }
             steps {
                 script {
-                    // **FIXED: Only fail if CRITICAL services don't have tests**
-                    def servicesWithoutTests = (env.SERVICES_WITHOUT_TESTS ?: '').split(',').findAll { it.trim() }
-                    if (!servicesWithoutTests.isEmpty()) {
-                        error """
-PIPELINE FAILED: The following CRITICAL services do not have test files:
-${servicesWithoutTests.collect { "   • ${it}" }.join('\n')}
-
-- Action required: Add unit tests before proceeding
-- Only customers-service, vets-service, visits-service require tests
-"""
-                    }
-
                     // Recreate service map
                     def serviceMap = [
                         'genai-service'     : env.SERVICE_MAP_GENAI,
@@ -239,26 +225,57 @@ ${servicesWithoutTests.collect { "   • ${it}" }.join('\n')}
                     ]
                     
                     def services = (env.CHANGED_SERVICES ?: '').split(',')
-                    def criticalServices = ['customers-service', 'vets-service', 'visits-service']
+                    def servicesWithoutTests = (env.SERVICES_WITHOUT_TESTS ?: '').split(',').findAll { it.trim() }
                     
-                    // **FIXED: Only check coverage for CRITICAL services that were changed**
+                    // Define service categories
+                    def criticalServices = ['customers-service', 'vets-service', 'visits-service']
+                    def servicesWithTests = ['api-gateway', 'config-server', 'discovery-server']
+                    def servicesWithoutTestFiles = ['admin-server', 'genai-service']
+                    
                     def servicesToCheck = []
+                    def failedServices = []
+                    
+                    // Logic to determine which services to check for coverage:
+                    // 1. Critical services: ALWAYS check code coverage
+                    // 2. Other services: Just check if they have changed AND have test files
+                    
+                    echo "=== COVERAGE CHECK LOGIC ==="
+                    
+                    // 1. ALWAYS check critical services (customers, vets, visits)
+                    criticalServices.each { svc ->
+                        servicesToCheck.add(svc)
+                        echo "Adding ${svc} to coverage check (CRITICAL service - always check)"
+                    }
+
+                    // 2. Only check other services if they have changed AND have test files
+                    def otherChangedServices = []
                     if (services.contains('all')) {
-                        servicesToCheck = criticalServices // Only check critical services
-                        echo "Checking coverage for all CRITICAL services: ${servicesToCheck.join(', ')}"
+                        otherChangedServices = servicesWithTests + servicesWithoutTestFiles
+                        echo "All services changed, checking non-critical services"
                     } else {
-                        servicesToCheck = services.findAll { criticalServices.contains(it) }
-                        if (servicesToCheck.isEmpty()) {
-                            echo "No critical services changed. Skipping coverage check."
-                            echo "Changed services: ${services.join(', ')} (no coverage requirement)"
-                            return
+                        otherChangedServices = services.findAll { !criticalServices.contains(it) }
+                        echo "Non-critical services changed: ${otherChangedServices.join(', ')}"
+                    }
+                    
+                    otherChangedServices.each { svc ->
+                        if (servicesWithTests.contains(svc)) {
+                            servicesToCheck.add(svc)
+                            echo "Adding ${svc} to coverage check (has tests + changed)"
+                        } else if (servicesWithoutTestFiles.contains(svc)) {
+                            echo "Skipping ${svc} coverage check (no test files)"
                         } else {
-                            echo "Checking coverage for changed CRITICAL services: ${servicesToCheck.join(', ')}"
+                            echo "Unknown service: ${svc}"
                         }
                     }
                     
-                    def failedServices = []
+                    echo "Final services to check coverage: ${servicesToCheck.join(', ')}"
                     
+                    if (servicesToCheck.isEmpty()) {
+                        echo "No services require coverage check."
+                        return
+                    }
+                    
+                    // Check coverage for each service
                     servicesToCheck.each { svc ->
                         def reportPath = "${serviceMap[svc]}/target/site/jacoco/jacoco.xml"
                         
@@ -267,25 +284,30 @@ ${servicesWithoutTests.collect { "   • ${it}" }.join('\n')}
                             echo "Coverage for ${svc}: ${coverage}%"
                             
                             if (coverage < env.COVERAGE_THRESHOLD.toDouble()) {
-                                failedServices.add("${svc} (${coverage}%)")
+                                def reason = criticalServices.contains(svc) ? "CRITICAL" : "CHANGED+HAS_TESTS"
+                                failedServices.add("${svc} (${coverage}%) [${reason}]")
                             }
                         } else {
                             echo "Coverage report not found for ${svc}: ${reportPath}"
-                            failedServices.add("${svc} (no report)")
+                            def reason = criticalServices.contains(svc) ? "CRITICAL" : "CHANGED+HAS_TESTS"
+                            failedServices.add("${svc} (no report) [${reason}]")
                         }
                     }
 
                     if (!failedServices.isEmpty()) {
                         error """
-PIPELINE FAILED: Critical services below coverage threshold (${env.COVERAGE_THRESHOLD}%):
+PIPELINE FAILED: Services below coverage threshold (${env.COVERAGE_THRESHOLD}%):
 ${failedServices.collect { "   • ${it}" }.join('\n')}
 
-- Action required: Improve test coverage before proceeding
-- Add more unit tests to increase coverage above ${env.COVERAGE_THRESHOLD}%
-- Only customers-service, vets-service, visits-service require coverage check
+Coverage Rules:
+• CRITICAL services (customers, vets, visits): Always checked
+• OTHER services: Only checked when changed AND have test files
+• Services without tests: Skipped
+
+Action required: Improve test coverage before proceeding
 """
                     } else {
-                        echo "✅ All critical services meet coverage threshold of ${env.COVERAGE_THRESHOLD}%"
+                        echo "All required services meet coverage threshold of ${env.COVERAGE_THRESHOLD}%"
                     }
                 }
             }
@@ -392,7 +414,7 @@ except Exception as e:
     print('0.00')
 "
             else
-                # Fallback: dùng awk
+                # Fallback: Using awk
                 awk '
                     /<counter type="LINE"/ {
                         for (i = 1; i <= NF; i++) {
