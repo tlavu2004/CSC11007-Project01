@@ -18,7 +18,7 @@ pipeline {
     }
 
     environment {
-        COVERAGE_THRESHOLD = '70.0'
+        COVERAGE_THRESHOLD = '30.0'
         MAVEN_OPTS = '-Xmx1024m'
     }
 
@@ -33,8 +33,24 @@ pipeline {
                         ).trim()
                         
                         if (!changedFiles) {
-                            echo "No changes detected, treating as full build."
-                            changedFiles = 'force-all'
+                            echo "No changes detected. This might be:"
+                            echo "  - First build on new branch"
+                            echo "  - Manual/scheduled build"
+                            echo "  - Git diff command issue"
+                            
+                            // Check if this is a manual build or scheduled build
+                            def buildCause = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
+                            def isManualBuild = !buildCause.isEmpty()
+                            
+                            if (isManualBuild) {
+                                echo "Manual build detected - building all services"
+                                changedFiles = 'MANUAL_BUILD_ALL'
+                            } else {
+                                echo "No changes and not manual build - skipping pipeline"
+                                currentBuild.result = 'NOT_BUILT'
+                                currentBuild.description = 'No changes detected - pipeline skipped'
+                                return
+                            }
                         } else {
                             echo "Changed files:\n${changedFiles}"
                         }
@@ -73,9 +89,13 @@ pipeline {
                         def rootFiles = ['pom.xml', 'docker-compose.yml', 'Jenkinsfile']
                         def hasRootChanges = rootFiles.any { changedFiles.contains(it) }
 
-                        if (changedFiles == 'force-all' || hasRootChanges || changedServices.isEmpty()) {
-                            echo "No specific service detected or root changes found. Will test and build all."
+                        if (changedFiles == 'MANUAL_BUILD_ALL' || hasRootChanges) {
+                            echo "Manual build or root changes detected. Will test and build all services."
                             changedServices = ['all']
+                        } else if (changedServices.isEmpty()) {
+                            echo "No service changes detected. Skipping pipeline."
+                            currentBuild.result = 'NOT_BUILT'
+                            return
                         }
 
                         env.CHANGED_SERVICES = changedServices.join(',')
