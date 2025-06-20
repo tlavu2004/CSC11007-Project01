@@ -103,7 +103,7 @@ pipeline {
                         'admin-server'      : env.SERVICE_MAP_ADMIN
                     ]
 
-                    def services = (env.CHANGED_SERVICES ?: '').split(',')
+                    def services = (env.CHANGED_SERVICES ?: '').split(',') as List
                     def servicesToTest = []
 
                     echo "=== TESTING PHASE - Only services with test files ==="
@@ -186,7 +186,7 @@ pipeline {
                     script {
                         echo "Publishing JaCoCo coverage reports"
 
-                        def servicesToTest = (env.SERVICES_TO_TEST ?: '').split(',')
+                        def servicesToTest = (env.SERVICES_TO_TEST ?: '').split(',') as List
                         if (servicesToTest.isEmpty() || servicesToTest[0] == '') {
                             echo "No services were tested - skipping coverage report"
                             return
@@ -237,7 +237,7 @@ pipeline {
         stage('Check Code Coverage Threshold') {
             steps {
                 script {
-                    def servicesToTest = (env.SERVICES_TO_TEST ?: '').split(',')
+                    def servicesToTest = (env.SERVICES_TO_TEST ?: '').split(',') as List
                     if (servicesToTest.isEmpty() || servicesToTest[0] == '') {
                         echo "No services were tested - skipping coverage check"
                         return
@@ -306,7 +306,7 @@ Coverage check failed - pipeline stopped.
                         'admin-server'      : env.SERVICE_MAP_ADMIN
                     ]
                     
-                    def services = (env.CHANGED_SERVICES ?: '').split(',')
+                    def services = (env.CHANGED_SERVICES ?: '').split(',') as List
                     
                     echo "=== BUILD PHASE - All changed services (including those without tests) ==="
                     
@@ -341,7 +341,7 @@ Coverage check failed - pipeline stopped.
         stage('Quality Gate') {
             steps {
                 script {
-                    def services = (env.CHANGED_SERVICES ?: '').split(',')
+                    def services = (env.CHANGED_SERVICES ?: '').split(',') as List
                     echo "Quality gate passed for services: ${services.join(', ')}"
                 }
             }
