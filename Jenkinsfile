@@ -146,11 +146,14 @@ pipeline {
                     try {
                         if (services.contains('all')) {
                             echo "Running tests for all modules..."
-                            sh './mvnw clean verify'
+                            sh "./mvnw clean verify -DskipTests=false -Djacoco.skip=false"
+                            sh "find . -name 'jacoco.xml' || true"
                         } else {
                             def modules = services.collect { serviceMap[it] }.join(',')
                             echo "Running tests for: ${modules}"
-                            sh "./mvnw clean verify -pl ${modules} -am"
+                            sh "./mvnw clean verify -pl ${modules} -am -DskipTests=false -Djacoco.skip=false"
+                            sh "ls -l ${modules.replace(',', ' ')}/target/site/jacoco/jacoco.xml || true"
+                            sh "find . -name 'jacoco.xml' || true"
                         }
                     } catch (Exception e) {
                         currentBuild.result = 'UNSTABLE'
