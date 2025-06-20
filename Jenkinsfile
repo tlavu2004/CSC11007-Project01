@@ -27,10 +27,25 @@ pipeline {
             steps {
                 script {
                     try {
-                        def changedFiles = sh(
-                            script: 'git diff --name-only origin/main...HEAD || git ls-files', 
-                            returnStdout: true
-                        ).trim()
+                        // Improved git command
+                        def changedFiles = ''
+                        try {
+                            changedFiles = sh(
+                                script: 'git diff --name-only origin/main...HEAD',
+                                returnStdout: true
+                            ).trim()
+                        } catch (Exception gitError) {
+                            echo "Git diff failed, trying alternative approach..."
+                            try {
+                                changedFiles = sh(
+                                    script: 'git diff --name-only HEAD~1',
+                                    returnStdout: true
+                                ).trim()
+                            } catch (Exception gitError2) {
+                                echo "Alternative git diff also failed, using manual trigger logic"
+                                changedFiles = ''
+                            }
+                        }
                         
                         if (!changedFiles) {
                             echo "No changes detected. This might be:"
@@ -38,7 +53,7 @@ pipeline {
                             echo "  - Manual/scheduled build"
                             echo "  - Git diff command issue"
                             
-                            // Check if this is a manual build or scheduled build
+                            // Check if this is a manual build
                             def buildCause = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
                             def isManualBuild = !buildCause.isEmpty()
                             
@@ -52,10 +67,13 @@ pipeline {
                                 return
                             }
                         } else {
-                            echo "Changed files:\n${changedFiles}"
+                            echo "Changed files detected:"
+                            changedFiles.split('\n').each { file ->
+                                echo "  - ${file}"
+                            }
                         }
 
-                        // Define service mapping as a global variable
+                        // Define service mapping
                         env.SERVICE_MAP_GENAI = 'spring-petclinic-genai-service'
                         env.SERVICE_MAP_CUSTOMERS = 'spring-petclinic-customers-service'
                         env.SERVICE_MAP_VETS = 'spring-petclinic-vets-service'
@@ -78,28 +96,45 @@ pipeline {
 
                         def changedServices = []
 
-                        // Check for service-specific changes
-                        for (entry in serviceMap) {
-                            if (changedFiles.contains(entry.value)) {
-                                changedServices.add(entry.key)
+                        // Improved service detection logic
+                        if (changedFiles == 'MANUAL_BUILD_ALL') {
+                            changedServices = ['all']
+                        } else {
+                            // Check for root-level changes first
+                            def rootFiles = ['pom.xml', 'docker-compose.yml', 'Jenkinsfile']
+                            def hasRootChanges = rootFiles.any { rootFile ->
+                                changedFiles.split('\n').any { it.trim() == rootFile }
+                            }
+                            
+                            if (hasRootChanges) {
+                                echo "Root level changes detected - will build all services"
+                                changedServices = ['all']
+                            } else {
+                                // Check for service-specific changes using exact path matching
+                                def changedFilesList = changedFiles.split('\n').collect { it.trim() }
+                                
+                                serviceMap.each { serviceName, servicePath ->
+                                    def hasServiceChanges = changedFilesList.any { file ->
+                                        file.startsWith("${servicePath}/")
+                                    }
+                                    
+                                    if (hasServiceChanges) {
+                                        changedServices.add(serviceName)
+                                        echo "Service ${serviceName} has changes in directory: ${servicePath}/"
+                                    }
+                                }
                             }
                         }
 
-                        // Check for root-level changes that affect all services
-                        def rootFiles = ['pom.xml', 'docker-compose.yml', 'Jenkinsfile']
-                        def hasRootChanges = rootFiles.any { changedFiles.contains(it) }
-
-                        if (changedFiles == 'MANUAL_BUILD_ALL' || hasRootChanges) {
-                            echo "Manual build or root changes detected. Will test and build all services."
-                            changedServices = ['all']
-                        } else if (changedServices.isEmpty()) {
-                            echo "No service changes detected. Skipping pipeline."
+                        if (changedServices.isEmpty()) {
+                            echo "No service-specific changes detected. Skipping pipeline."
                             currentBuild.result = 'NOT_BUILT'
+                            currentBuild.description = 'No service changes detected - pipeline skipped'
                             return
                         }
 
                         env.CHANGED_SERVICES = changedServices.join(',')
-                        echo "Changed services: ${env.CHANGED_SERVICES}"
+                        echo "Final changed services: ${env.CHANGED_SERVICES}"
                         
                     } catch (Exception e) {
                         echo "Error detecting changes: ${e.message}. Defaulting to all services."
