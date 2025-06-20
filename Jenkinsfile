@@ -273,17 +273,17 @@ pipeline {
 
                         if (patterns) {
                             echo "Using coverage files: ${patterns.join(',')}"
-                            
+
                             // Collect source directories for all tested services
                             def sourceDirectories = []
                             for (svc in servicesToTest) {
                                 def sourceDir = "${serviceMap[svc]}/src/main/java"
                                 if (fileExists(sourceDir)) {
-                                    sourceDirectories << sourceDir
+                                    sourceDirectories << [path: sourceDir]
                                     echo "Added source directory: ${sourceDir}"
                                 }
                             }
-                            
+
                             // Debug source directories
                             servicesToTest.each { svc ->
                                 def sourceDir = "${serviceMap[svc]}/src/main/java"
