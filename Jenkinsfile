@@ -273,11 +273,30 @@ pipeline {
 
                         if (patterns) {
                             echo "Using coverage files: ${patterns.join(',')}"
+                            
+                            // Collect source directories for all tested services
+                            def sourceDirectories = []
+                            for (svc in servicesToTest) {
+                                def sourceDir = "${serviceMap[svc]}/src/main/java"
+                                if (fileExists(sourceDir)) {
+                                    sourceDirectories << sourceDir
+                                    echo "Added source directory: ${sourceDir}"
+                                }
+                            }
+                            
+                            // Debug source directories
+                            servicesToTest.each { svc ->
+                                def sourceDir = "${serviceMap[svc]}/src/main/java"
+                                echo "Checking source directory for ${svc}: ${sourceDir}"
+                                sh "ls -la ${sourceDir} || echo 'Directory not found'"
+                            }
+
                             recordCoverage(
                                 tools: [[
                                     parser: 'JACOCO',
                                     path: patterns.join(',')
                                 ]],
+                                sourceDirectories: sourceDirectories,
                                 enabledForFailure: true,
                                 skipPublishingChecks: true
                             )
