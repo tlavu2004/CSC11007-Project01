@@ -187,19 +187,23 @@ pipeline {
                         } else {
                             for (svc in services) {
                                 def p = "${serviceMap[svc]}/target/site/jacoco/jacoco.xml"
+                                echo "Checking fileExists for: ${p}"
                                 if (fileExists(p)) {
                                     patterns << p
+                                    echo "Found: ${p}"
+                                } else {
+                                    echo "Not found (fileExists returned false): ${p}"
+                                    sh "ls -lah ${serviceMap[svc]}/target/site/jacoco || true"
                                 }
                             }
                         }
 
-                        patterns.each { echo "Found coverage report: ${it}" }
-
                         if (patterns) {
+                            echo "Using coverage files: ${patterns.join(',')}"
                             recordCoverage(
                                 tools: [[
                                     parser: 'JACOCO',
-                                    path: patterns.join(',')
+                                    path: patterns.join(',') // or just use '**/jacoco.xml' if needed
                                 ]],
                                 enabledForFailure: true,
                                 skipPublishingChecks: true
