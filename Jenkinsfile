@@ -18,7 +18,7 @@ pipeline {
     }
 
     environment {
-        COVERAGE_THRESHOLD = '30.0'
+        COVERAGE_THRESHOLD = '70.0'
         MAVEN_OPTS = '-Xmx1024m'
     }
 
@@ -81,54 +81,17 @@ pipeline {
                         env.CHANGED_SERVICES = changedServices.join(',')
                         echo "Changed services: ${env.CHANGED_SERVICES}"
                         
-                        // Check for services without test files (only for services that will be tested)
-                        def servicesWithoutTests = []
-                        def servicesToCheck = []
-                        
-                        if (changedServices.contains('all')) {
-                            servicesToCheck = serviceMap.keySet() as List
-                        } else {
-                            servicesToCheck = changedServices
-                        }
-                        
-                        servicesToCheck.each { service ->
-                            def testDir = "${serviceMap[service]}/src/test/java"
-                            if (!fileExists(testDir)) {
-                                servicesWithoutTests.add(service)
-                            } else {
-                                // Check if there are actual test files
-                                def testFiles = sh(
-                                    script: "find ${testDir} -name '*Test.java' -o -name '*Tests.java' | wc -l",
-                                    returnStdout: true
-                                ).trim()
-                                
-                                if (testFiles == '0') {
-                                    servicesWithoutTests.add(service)
-                                }
-                            }
-                        }
-                        
-                        env.SERVICES_WITHOUT_TESTS = servicesWithoutTests.join(',')
-                        if (!servicesWithoutTests.isEmpty()) {
-                            echo "Services without test files: ${servicesWithoutTests.join(', ')}"
-                        }
-                        
                     } catch (Exception e) {
                         echo "Error detecting changes: ${e.message}. Defaulting to all services."
                         env.CHANGED_SERVICES = 'all'
-                        env.SERVICES_WITHOUT_TESTS = ''
                     }
                 }
             }
         }
 
         stage('Test') {
-            environment {
-                SERVICES = '' // Using environment variables to map services
-            }
             steps {
                 script {
-                    // Recreate service map
                     def serviceMap = [
                         'genai-service'     : env.SERVICE_MAP_GENAI,
                         'customers-service' : env.SERVICE_MAP_CUSTOMERS,
@@ -141,20 +104,75 @@ pipeline {
                     ]
 
                     def services = (env.CHANGED_SERVICES ?: '').split(',')
-                    env.SERVICES = services.join(',') // Lưu vào biến môi trường để post block dùng được
+                    def servicesToTest = []
+
+                    echo "=== TESTING PHASE - Only services with test files ==="
+
+                    // Step 2: Test only changed services that have test files
+                    if (services.contains('all')) {
+                        echo "All services changed, checking all services for test files..."
+                        serviceMap.each { svcName, svcPath ->
+                            def testDir = "${svcPath}/src/test/java"
+                            if (fileExists(testDir)) {
+                                def testFiles = sh(
+                                    script: "find ${testDir} -name '*Test.java' -o -name '*Tests.java' | wc -l",
+                                    returnStdout: true
+                                ).trim()
+                                
+                                if (testFiles != '0') {
+                                    servicesToTest.add(svcName)
+                                    echo "Service ${svcName} has ${testFiles} test files - will be tested"
+                                } else {
+                                    echo "Service ${svcName} has no test files - skipping"
+                                }
+                            } else {
+                                echo "Service ${svcName} has no test directory - skipping"
+                            }
+                        }
+                    } else {
+                        echo "Checking changed services for test files: ${services.join(', ')}"
+                        services.each { svcName ->
+                            def svcPath = serviceMap[svcName]
+                            def testDir = "${svcPath}/src/test/java"
+                            if (fileExists(testDir)) {
+                                def testFiles = sh(
+                                    script: "find ${testDir} -name '*Test.java' -o -name '*Tests.java' | wc -l",
+                                    returnStdout: true
+                                ).trim()
+                                
+                                if (testFiles != '0') {
+                                    servicesToTest.add(svcName)
+                                    echo "Service ${svcName} has ${testFiles} test files - will be tested"
+                                } else {
+                                    echo "Service ${svcName} has no test files - skipping"
+                                }
+                            } else {
+                                echo "Service ${svcName} has no test directory - skipping"
+                            }
+                        }
+                    }
+
+                    // Store services that will be tested for coverage check
+                    env.SERVICES_TO_TEST = servicesToTest.join(',')
+
+                    if (servicesToTest.isEmpty()) {
+                        echo "No services with test files to test - skipping test phase"
+                        return
+                    }
 
                     try {
-                        if (services.contains('all')) {
-                            echo "Running tests for all modules..."
-                            sh "./mvnw clean verify -DskipTests=false -Djacoco.skip=false"
-                            sh "find . -name 'jacoco.xml' || true"
-                        } else {
-                            def modules = services.collect { serviceMap[it] }.join(',')
-                            echo "Running tests for: ${modules}"
-                            sh "./mvnw clean verify -pl ${modules} -am -DskipTests=false -Djacoco.skip=false"
-                            sh "ls -l ${modules.replace(',', ' ')}/target/site/jacoco/jacoco.xml || true"
-                            sh "find . -name 'jacoco.xml' || true"
+                        def modules = servicesToTest.collect { serviceMap[it] }.join(',')
+                        echo "Running tests for services with test files: ${modules}"
+                        sh "./mvnw clean verify -pl ${modules} -am -DskipTests=false -Djacoco.skip=false"
+                        
+                        // Debug: Check generated jacoco files
+                        servicesToTest.each { svc ->
+                            def jacocoPath = "${serviceMap[svc]}/target/site/jacoco/jacoco.xml"
+                            echo "Checking jacoco file for ${svc}: ${jacocoPath}"
+                            sh "ls -l ${jacocoPath} || echo 'File not found'"
                         }
+                        sh "find . -name 'jacoco.xml' || true"
+                        
                     } catch (Exception e) {
                         currentBuild.result = 'UNSTABLE'
                         echo "Tests failed: ${e.message}"
@@ -168,7 +186,11 @@ pipeline {
                     script {
                         echo "Publishing JaCoCo coverage reports"
 
-                        def services = (env.SERVICES ?: '').split(',')
+                        def servicesToTest = (env.SERVICES_TO_TEST ?: '').split(',')
+                        if (servicesToTest.isEmpty() || servicesToTest[0] == '') {
+                            echo "No services were tested - skipping coverage report"
+                            return
+                        }
 
                         def serviceMap = [
                             'genai-service'     : env.SERVICE_MAP_GENAI,
@@ -182,19 +204,15 @@ pipeline {
                         ]
 
                         def patterns = []
-                        if (services.contains('all')) {
-                            patterns = ['**/target/site/jacoco/jacoco.xml']
-                        } else {
-                            for (svc in services) {
-                                def p = "${serviceMap[svc]}/target/site/jacoco/jacoco.xml"
-                                echo "Checking fileExists for: ${p}"
-                                if (fileExists(p)) {
-                                    patterns << p
-                                    echo "Found: ${p}"
-                                } else {
-                                    echo "Not found (fileExists returned false): ${p}"
-                                    sh "ls -lah ${serviceMap[svc]}/target/site/jacoco || true"
-                                }
+                        for (svc in servicesToTest) {
+                            def p = "${serviceMap[svc]}/target/site/jacoco/jacoco.xml"
+                            echo "Checking fileExists for: ${p}"
+                            if (fileExists(p)) {
+                                patterns << p
+                                echo "Found coverage file: ${p}"
+                            } else {
+                                echo "Coverage file not found: ${p}"
+                                sh "ls -lah ${serviceMap[svc]}/target/site/jacoco || true"
                             }
                         }
 
@@ -203,7 +221,7 @@ pipeline {
                             recordCoverage(
                                 tools: [[
                                     parser: 'JACOCO',
-                                    path: patterns.join(',') // or just use '**/jacoco.xml' if needed
+                                    path: patterns.join(',')
                                 ]],
                                 enabledForFailure: true,
                                 skipPublishingChecks: true
@@ -219,7 +237,12 @@ pipeline {
         stage('Check Code Coverage Threshold') {
             steps {
                 script {
-                    // Recreate service map
+                    def servicesToTest = (env.SERVICES_TO_TEST ?: '').split(',')
+                    if (servicesToTest.isEmpty() || servicesToTest[0] == '') {
+                        echo "No services were tested - skipping coverage check"
+                        return
+                    }
+
                     def serviceMap = [
                         'genai-service'     : env.SERVICE_MAP_GENAI,
                         'customers-service' : env.SERVICE_MAP_CUSTOMERS,
@@ -231,59 +254,12 @@ pipeline {
                         'admin-server'      : env.SERVICE_MAP_ADMIN
                     ]
                     
-                    def services = (env.CHANGED_SERVICES ?: '').split(',')
-                    def servicesWithoutTests = (env.SERVICES_WITHOUT_TESTS ?: '').split(',').findAll { it.trim() }
-                    
-                    // Define service categories
-                    def criticalServices = ['customers-service', 'vets-service', 'visits-service']
-                    def servicesWithTests = ['api-gateway', 'config-server', 'discovery-server']
-                    def servicesWithoutTestFiles = ['admin-server', 'genai-service']
-                    
-                    def servicesToCheck = []
                     def failedServices = []
                     
-                    // Logic to determine which services to check for coverage:
-                    // 1. Critical services: ALWAYS check code coverage
-                    // 2. Other services: Just check if they have changed AND have test files
+                    echo "=== COVERAGE CHECK - Services that were tested (${env.COVERAGE_THRESHOLD}% threshold) ==="
                     
-                    echo "=== COVERAGE CHECK LOGIC ==="
-                    
-                    // 1. ALWAYS check critical services (customers, vets, visits)
-                    criticalServices.each { svc ->
-                        servicesToCheck.add(svc)
-                        echo "Adding ${svc} to coverage check (CRITICAL service - always check)"
-                    }
-
-                    // 2. Only check other services if they have changed AND have test files
-                    def otherChangedServices = []
-                    if (services.contains('all')) {
-                        otherChangedServices = servicesWithTests + servicesWithoutTestFiles
-                        echo "All services changed, checking non-critical services"
-                    } else {
-                        otherChangedServices = services.findAll { !criticalServices.contains(it) }
-                        echo "Non-critical services changed: ${otherChangedServices.join(', ')}"
-                    }
-                    
-                    otherChangedServices.each { svc ->
-                        if (servicesWithTests.contains(svc)) {
-                            servicesToCheck.add(svc)
-                            echo "Adding ${svc} to coverage check (has tests + changed)"
-                        } else if (servicesWithoutTestFiles.contains(svc)) {
-                            echo "Skipping ${svc} coverage check (no test files)"
-                        } else {
-                            echo "Unknown service: ${svc}"
-                        }
-                    }
-                    
-                    echo "Final services to check coverage: ${servicesToCheck.join(', ')}"
-                    
-                    if (servicesToCheck.isEmpty()) {
-                        echo "No services require coverage check."
-                        return
-                    }
-                    
-                    // Check coverage for each service
-                    servicesToCheck.each { svc ->
+                    // Step 3: Check coverage only for services that were tested
+                    servicesToTest.each { svc ->
                         def reportPath = "${serviceMap[svc]}/target/site/jacoco/jacoco.xml"
                         
                         if (fileExists(reportPath)) {
@@ -291,13 +267,11 @@ pipeline {
                             echo "Coverage for ${svc}: ${coverage}%"
                             
                             if (coverage < env.COVERAGE_THRESHOLD.toDouble()) {
-                                def reason = criticalServices.contains(svc) ? "CRITICAL" : "CHANGED+HAS_TESTS"
-                                failedServices.add("${svc} (${coverage}%) [${reason}]")
+                                failedServices.add("${svc} (${coverage}%)")
                             }
                         } else {
-                            echo "Coverage report not found for ${svc}: ${reportPath}"
-                            def reason = criticalServices.contains(svc) ? "CRITICAL" : "CHANGED+HAS_TESTS"
-                            failedServices.add("${svc} (no report) [${reason}]")
+                            echo "ERROR: No coverage report found for ${svc} - this should not happen"
+                            failedServices.add("${svc} (no report)")
                         }
                     }
 
@@ -306,15 +280,10 @@ pipeline {
 PIPELINE FAILED: Services below coverage threshold (${env.COVERAGE_THRESHOLD}%):
 ${failedServices.collect { "   • ${it}" }.join('\n')}
 
-Coverage Rules:
-• CRITICAL services (customers, vets, visits): Always checked
-• OTHER services: Only checked when changed AND have test files
-• Services without tests: Skipped
-
-Action required: Improve test coverage before proceeding
+Coverage check failed - pipeline stopped.
 """
                     } else {
-                        echo "All required services meet coverage threshold of ${env.COVERAGE_THRESHOLD}%"
+                        echo "All tested services meet coverage threshold of ${env.COVERAGE_THRESHOLD}%"
                     }
                 }
             }
@@ -326,7 +295,6 @@ Action required: Improve test coverage before proceeding
             }
             steps {
                 script {
-                    // Recreate service map
                     def serviceMap = [
                         'genai-service'     : env.SERVICE_MAP_GENAI,
                         'customers-service' : env.SERVICE_MAP_CUSTOMERS,
@@ -340,7 +308,10 @@ Action required: Improve test coverage before proceeding
                     
                     def services = (env.CHANGED_SERVICES ?: '').split(',')
                     
+                    echo "=== BUILD PHASE - All changed services (including those without tests) ==="
+                    
                     try {
+                        // Step 4: Build all changed services (including those without tests)
                         if (services.contains('all')) {
                             echo "Building all modules..."
                             sh './mvnw clean package -DskipTests'
@@ -348,7 +319,7 @@ Action required: Improve test coverage before proceeding
                             def modules = services.collect { 
                                 serviceMap[it] 
                             }.join(',')
-                            echo "Building: ${modules}"
+                            echo "Building changed services: ${modules}"
                             sh "./mvnw clean package -DskipTests -pl ${modules} -am"
                         }
 
@@ -379,10 +350,12 @@ Action required: Improve test coverage before proceeding
 
     post {
         always {
-            cleanWs(cleanWhenNotBuilt: false,
-                   deleteDirs: true,
-                   disableDeferredWipeout: true,
-                   notFailBuild: true)
+            cleanWs(
+                cleanWhenNotBuilt: false,
+                deleteDirs: true,
+                disableDeferredWipeout: true,
+                notFailBuild: true
+            )
         }
         success {
             echo "Pipeline completed successfully for services: ${env.CHANGED_SERVICES}"
