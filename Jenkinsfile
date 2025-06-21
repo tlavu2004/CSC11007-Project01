@@ -27,33 +27,45 @@ pipeline {
             steps {
                 script {
                     try {
-                        // Improved git command
                         def changedFiles = ''
+                        def gitCommand = ''
+                        
+                        // Determine git command based on build trigger
+                        if (env.CHANGE_ID) {
+                            // This is a PR build
+                            gitCommand = "git diff --name-only origin/main...HEAD"
+                            echo "PR build detected - comparing against main branch"
+                        } else {
+                            // This is a main branch build (after merge)
+                            gitCommand = "git diff --name-only HEAD~1..HEAD"
+                            echo "Main branch build detected - comparing with previous commit"
+                        }
+                        
                         try {
                             changedFiles = sh(
-                                script: 'git diff --name-only origin/main...HEAD',
+                                script: gitCommand,
                                 returnStdout: true
                             ).trim()
                         } catch (Exception gitError) {
-                            echo "Git diff failed, trying alternative approach..."
+                            echo "Primary git diff failed, trying fallback..."
                             try {
                                 changedFiles = sh(
                                     script: 'git diff --name-only HEAD~1',
                                     returnStdout: true
                                 ).trim()
                             } catch (Exception gitError2) {
-                                echo "Alternative git diff also failed, using manual trigger logic"
+                                echo "All git diff commands failed"
                                 changedFiles = ''
                             }
                         }
                         
                         if (!changedFiles) {
                             echo "No changes detected. This might be:"
-                            echo "  - First build on new branch"
-                            echo "  - Manual/scheduled build"
+                            echo "  - First commit in repo"
+                            echo "  - Manual build"
                             echo "  - Git diff command issue"
                             
-                            // Check if this is a manual build
+                            // Check build cause
                             def buildCause = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
                             def isManualBuild = !buildCause.isEmpty()
                             
@@ -61,10 +73,16 @@ pipeline {
                                 echo "Manual build detected - building all services"
                                 changedFiles = 'MANUAL_BUILD_ALL'
                             } else {
-                                echo "No changes and not manual build - skipping pipeline"
-                                currentBuild.result = 'NOT_BUILT'
-                                currentBuild.description = 'No changes detected - pipeline skipped'
-                                return
+                                // For automated builds with no changes, still build if this is main branch
+                                if (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master') {
+                                    echo "Main branch build with no detected changes - building all services"
+                                    changedFiles = 'MAIN_BRANCH_BUILD'
+                                } else {
+                                    echo "No changes and not main branch - skipping pipeline"
+                                    currentBuild.result = 'NOT_BUILT'
+                                    currentBuild.description = 'No changes detected - pipeline skipped'
+                                    return
+                                }
                             }
                         } else {
                             echo "Changed files detected:"
@@ -96,8 +114,8 @@ pipeline {
 
                         def changedServices = []
 
-                        // Improved service detection logic
-                        if (changedFiles == 'MANUAL_BUILD_ALL') {
+                        // Service detection logic
+                        if (changedFiles == 'MANUAL_BUILD_ALL' || changedFiles == 'MAIN_BRANCH_BUILD') {
                             changedServices = ['all']
                         } else {
                             // Check for root-level changes first
@@ -110,7 +128,7 @@ pipeline {
                                 echo "Root level changes detected - will build all services"
                                 changedServices = ['all']
                             } else {
-                                // Check for service-specific changes using exact path matching
+                                // Check for service-specific changes
                                 def changedFilesList = changedFiles.split('\n').collect { it.trim() }
                                 
                                 serviceMap.each { serviceName, servicePath ->
