@@ -514,7 +514,6 @@ try:
             counter_count += 1
             missed = counter.get('missed', '0')
             covered = counter.get('covered', '0')
-            print('Counter ' + str(counter_count) + ': missed=' + missed + ', covered=' + covered)
             
             # Ensure values are numeric
             try:
