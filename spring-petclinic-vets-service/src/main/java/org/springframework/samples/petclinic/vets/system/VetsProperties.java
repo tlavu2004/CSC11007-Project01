@@ -30,5 +30,6 @@ public record VetsProperties(
         int ttl,
         int heapSize
     ) {
+        
     }
 }
