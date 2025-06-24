@@ -32,4 +32,3 @@ public record VetsProperties(
     ) {
     }
 }
-// End of file
