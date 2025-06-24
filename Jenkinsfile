@@ -464,51 +464,159 @@ Coverage check failed - pipeline stopped.
 // Helper function để parse JaCoCo coverage
 def getCoverageFromReport(String reportPath) {
     try {
-        // Using Python or awk to parse the JaCoCo XML report
+        // Log the file path being processed
+        echo "Checking coverage report at: ${reportPath}"
+        
+        // Check if the report file exists
+        if (!fileExists(reportPath)) {
+            echo "ERROR: Coverage report file not found: ${reportPath}"
+            return 0.0
+        }
+
+        // Parse JaCoCo XML report using Python or awk fallback
         def coverage = sh(script: """
             if command -v python3 > /dev/null; then
+                echo "Using Python3 to parse coverage report..."
                 python3 -c "
 import xml.etree.ElementTree as ET
+import sys
+import os
+
+report_path = '${reportPath}'
+print('Processing file: ' + report_path)
+
+# Check if file exists and is readable
+if not os.path.exists(report_path):
+    print('ERROR: File does not exist')
+    print('0.00')
+    sys.exit(0)
+
+if not os.access(report_path, os.R_OK):
+    print('ERROR: File is not readable')
+    print('0.00')
+    sys.exit(0)
+
 try:
-    tree = ET.parse('${reportPath}')
+    # Parse XML document
+    tree = ET.parse(report_path)
     root = tree.getroot()
+    print('Root element: ' + root.tag)
+    
     total_missed = 0
     total_covered = 0
-    for counter in root.findall('.//counter[@type=\\\"LINE\\\"]'):
-        total_missed += int(counter.get('missed', 0))
-        total_covered += int(counter.get('covered', 0))
+    counter_count = 0
+    
+    # Find all counter elements with type='LINE'
+    # Fix: Use proper XPath syntax
+    counters = root.findall('.//counter')
+    for counter in counters:
+        if counter.get('type') == 'LINE':
+            counter_count += 1
+            missed = counter.get('missed', '0')
+            covered = counter.get('covered', '0')
+            
+            # Ensure values are numeric
+            try:
+                total_missed += int(missed)
+                total_covered += int(covered)
+            except ValueError as ve:
+                print('ValueError converting values: ' + str(ve))
+                continue
+    
+    print('Total LINE counters found: ' + str(counter_count))
+    print('Total missed: ' + str(total_missed) + ', Total covered: ' + str(total_covered))
+    
     total = total_missed + total_covered
     if total > 0:
-        print(f'{(total_covered/total)*100:.2f}')
+        coverage_percent = (total_covered * 100.0) / total
+        print('Coverage: ' + str(round(coverage_percent, 6)) + '%')
+        print('COVERAGE_RESULT=' + str(round(coverage_percent, 6)))
     else:
-        print('0.00')
+        print('No coverage data found')
+        print('COVERAGE_RESULT=0.00')
+        
+except ET.ParseError as pe:
+    print('XML Parse Error: ' + str(pe))
+    print('0.00')
 except Exception as e:
+    print('Unexpected error: ' + str(e))
     print('0.00')
 "
             else
-                # Fallback: Using awk
+                echo "Using awk to parse coverage report..."
+                # Fallback: Use awk for parsing
                 awk '
-                    /<counter type="LINE"/ {
-                        for (i = 1; i <= NF; i++) {
-                            if (\$i ~ /missed=/) { gsub(/[^0-9]/, "", \$i); missed += \$i }
-                            if (\$i ~ /covered=/) { gsub(/[^0-9]/, "", \$i); covered += \$i }
-                        }
+                BEGIN { 
+                    missed = 0; 
+                    covered = 0; 
+                    counter_count = 0;
+                    print "Starting awk parsing..."
+                }
+                # Look for counter elements with type="LINE"
+                /<counter[^>]*type="LINE"/ {
+                    counter_count++
+                    print "Processing line:", \$0
+                    
+                    # Extract missed attribute value
+                    if (match(\$0, /missed="([0-9]+)"/, arr)) {
+                        missed += arr[1]
+                        print "Found missed:", arr[1]
                     }
-                    END {
-                        total = missed + covered;
-                        if (total > 0) {
-                            printf(\"%.2f\", (covered / total) * 100)
-                        } else {
-                            print \"0.00\"
-                        }
+                    # Extract covered attribute value
+                    if (match(\$0, /covered="([0-9]+)"/, arr)) {
+                        covered += arr[1]
+                        print "Found covered:", arr[1]
                     }
-                ' ${reportPath}
+                }
+                END {
+                    print "Total LINE counters:", counter_count
+                    print "Total missed:", missed, "Total covered:", covered
+                    
+                    total = missed + covered;
+                    if (total > 0) {
+                        coverage_percent = (covered * 100.0) / total
+                        printf "Coverage: %.6f%%\\n", coverage_percent
+                        printf "COVERAGE_RESULT=%.6f\\n", coverage_percent
+                    } else {
+                        print "No coverage data found"
+                        print "COVERAGE_RESULT=0.00"
+                    }
+                }
+                ' "${reportPath}"
             fi
-        """, returnStdout: true).trim()
+        """, returnStdout: true)
 
-        return coverage.toDouble()
+        echo "Raw coverage output:\\n${coverage}"
+        
+        // Extract line starting with COVERAGE_RESULT=
+        def coverageResultLine = coverage.readLines().find { it.startsWith('COVERAGE_RESULT=') }
+        def coverageResult = coverageResultLine?.replace('COVERAGE_RESULT=', '')?.trim()
+        
+        echo "Extracted coverage result: '${coverageResult}'"
+
+        // Validate and convert result
+        if (coverageResult?.isDouble()) {
+            def result = coverageResult.toDouble()
+            echo "Final code coverage: ${result}%"
+            return result
+        } else {
+            echo "Invalid coverage result format: '${coverageResult}'"
+            return 0.0
+        }
+        
     } catch (Exception e) {
         echo "Error parsing coverage report: ${e.message}"
+        echo "Exception details: ${e.toString()}"
         return 0.0
+    }
+}
+
+// Helper: check if string can be converted to double
+boolean isDouble(String str) {
+    try {
+        str.toDouble()
+        return true
+    } catch (Exception ignored) {
+        return false
     }
 }
