@@ -576,7 +576,6 @@ except Exception as e:
                     if (total > 0) {
                         coverage_percent = (covered * 100.0) / total
                         printf "Coverage: %.6f%%\\n", coverage_percent
-                        printf "%.6f", coverage_percent
                     } else {
                         print "No coverage data found"
                         print "0.00"
