@@ -530,6 +530,7 @@ try:
     if total > 0:
         coverage_percent = (total_covered * 100.0) / total
         print('Coverage: ' + str(round(coverage_percent, 6)) + '%')
+        print(str(round(coverage_percent, 6)))
     else:
         print('No coverage data found')
         print('0.00')
@@ -575,6 +576,7 @@ except Exception as e:
                     if (total > 0) {
                         coverage_percent = (covered * 100.0) / total
                         printf "Coverage: %.6f%%\\n", coverage_percent
+                        printf "%.6f", coverage_percent
                     } else {
                         print "No coverage data found"
                         print "0.00"
