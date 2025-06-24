@@ -530,8 +530,8 @@ try:
     total = total_missed + total_covered
     if total > 0:
         coverage_percent = (total_covered * 100.0) / total
-        print('Coverage: ' + str(round(coverage_percent, 2)) + '%')
-        print(str(round(coverage_percent, 2)))
+        print('Coverage: ' + str(round(coverage_percent, 6)) + '%')
+        print(str(round(coverage_percent, 6)))
     else:
         print('No coverage data found')
         print('0.00')
@@ -576,8 +576,8 @@ except Exception as e:
                     total = missed + covered;
                     if (total > 0) {
                         coverage_percent = (covered * 100.0) / total
-                        printf "Coverage: %.2f%%\\n", coverage_percent
-                        printf "%.2f", coverage_percent
+                        printf "Coverage: %.6f%%\\n", coverage_percent
+                        printf "%.6f", coverage_percent
                     } else {
                         print "No coverage data found"
                         print "0.00"
@@ -596,7 +596,7 @@ except Exception as e:
         echo "Extracted coverage result: '${coverageResult}'"
 
         // Validate and convert result
-        if (coverageResult && coverageResult.matches(/^\\d+\\.\\d+\$/)) {
+        if (coverageResult?.isDouble()) {
             def result = coverageResult.toDouble()
             echo "Final code coverage: ${result}%"
             return result
@@ -609,5 +609,15 @@ except Exception as e:
         echo "Error parsing coverage report: ${e.message}"
         echo "Exception details: ${e.toString()}"
         return 0.0
+    }
+}
+
+// Helper: check if string can be converted to double
+boolean isDouble(String str) {
+    try {
+        str.toDouble()
+        return true
+    } catch (Exception ignored) {
+        return false
     }
 }
