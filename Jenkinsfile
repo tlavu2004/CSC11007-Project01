@@ -464,49 +464,90 @@ Coverage check failed - pipeline stopped.
 // Helper function để parse JaCoCo coverage
 def getCoverageFromReport(String reportPath) {
     try {
+        // Check if the report file exists
+        if (!fileExists(reportPath)) {
+            echo "Coverage report file not found: ${reportPath}"
+            return 0.0
+        }
+
         // Using Python or awk to parse the JaCoCo XML report
         def coverage = sh(script: """
             if command -v python3 > /dev/null; then
                 python3 -c "
 import xml.etree.ElementTree as ET
+import sys
+
 try:
     tree = ET.parse('${reportPath}')
     root = tree.getroot()
     total_missed = 0
     total_covered = 0
-    for counter in root.findall('.//counter[@type=\\\"LINE\\\"]'):
-        total_missed += int(counter.get('missed', 0))
-        total_covered += int(counter.get('covered', 0))
+    
+    # Find all counter with type='LINE'
+    for counter in root.findall('.//counter[@type=\"LINE\"]'):
+        missed = counter.get('missed', '0')
+        covered = counter.get('covered', '0')
+        
+        # Ensure missed and covered are integers
+        try:
+            total_missed += int(missed)
+            total_covered += int(covered)
+        except ValueError:
+            continue
+    
     total = total_missed + total_covered
     if total > 0:
-        print(f'{(total_covered/total)*100:.2f}')
+        coverage_percent = (total_covered / total) * 100
+        print(f'{coverage_percent:.6f}')
     else:
         print('0.00')
+        
+except FileNotFoundError:
+    print('0.00')
+    sys.exit(1)
+except ET.ParseError as e:
+    print('0.00')
+    sys.exit(1)
 except Exception as e:
     print('0.00')
+    sys.exit(1)
 "
             else
                 # Fallback: Using awk
                 awk '
-                    /<counter type="LINE"/ {
-                        for (i = 1; i <= NF; i++) {
-                            if (\$i ~ /missed=/) { gsub(/[^0-9]/, "", \$i); missed += \$i }
-                            if (\$i ~ /covered=/) { gsub(/[^0-9]/, "", \$i); covered += \$i }
-                        }
+                BEGIN { missed = 0; covered = 0 }
+                /<counter type="LINE"/ {
+                    # Find missed attribute
+                    if (match(\$0, /missed="([0-9]+)"/, arr)) {
+                        missed += arr[1]
                     }
-                    END {
-                        total = missed + covered;
-                        if (total > 0) {
-                            printf(\"%.2f\", (covered / total) * 100)
-                        } else {
-                            print \"0.00\"
-                        }
+                    # Find covered attribute
+                    if (match(\$0, /covered="([0-9]+)"/, arr)) {
+                        covered += arr[1]
                     }
-                ' ${reportPath}
+                }
+                END {
+                    total = missed + covered;
+                    if (total > 0) {
+                        printf "%.6f", (covered / total) * 100
+                    } else {
+                        print "0.00"
+                    }
+                }
+                ' "${reportPath}" 2>/dev/null || echo "0.00"
             fi
         """, returnStdout: true).trim()
 
-        return coverage.toDouble()
+        // Check if it's a valid number and convert to double
+        if (coverage && coverage.isNumber()) {
+            def result = coverage.toDouble()
+            echo "Code coverage: ${result}%"
+            return result
+        } else {
+            echo "Invalid coverage result: ${coverage}"
+            return 0.0
+        }
+        
     } catch (Exception e) {
         echo "Error parsing coverage report: ${e.message}"
         return 0.0
