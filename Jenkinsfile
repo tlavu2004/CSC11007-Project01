@@ -530,10 +530,10 @@ try:
     if total > 0:
         coverage_percent = (total_covered * 100.0) / total
         print('Coverage: ' + str(round(coverage_percent, 6)) + '%')
-        print(str(round(coverage_percent, 6)))
+        print('COVERAGE_RESULT=' + str(round(coverage_percent, 6)))
     else:
         print('No coverage data found')
-        print('0.00')
+        print('COVERAGE_RESULT=0.00')
         
 except ET.ParseError as pe:
     print('XML Parse Error: ' + str(pe))
@@ -576,10 +576,10 @@ except Exception as e:
                     if (total > 0) {
                         coverage_percent = (covered * 100.0) / total
                         printf "Coverage: %.6f%%\\n", coverage_percent
-                        printf "%.6f", coverage_percent
+                        printf "COVERAGE_RESULT=%.6f\\n", coverage_percent
                     } else {
                         print "No coverage data found"
-                        print "0.00"
+                        print "COVERAGE_RESULT=0.00"
                     }
                 }
                 ' "${reportPath}"
@@ -588,9 +588,9 @@ except Exception as e:
 
         echo "Raw coverage output:\\n${coverage}"
         
-        // Extract the last line (coverage result)
-        def lines = coverage.split('\\n')
-        def coverageResult = lines[-1].trim()
+        // Extract line starting with COVERAGE_RESULT=
+        def coverageResultLine = coverage.readLines().find { it.startsWith('COVERAGE_RESULT=') }
+        def coverageResult = coverageResultLine?.replace('COVERAGE_RESULT=', '')?.trim()
         
         echo "Extracted coverage result: '${coverageResult}'"
 
