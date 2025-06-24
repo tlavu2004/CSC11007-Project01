@@ -464,23 +464,17 @@ Coverage check failed - pipeline stopped.
 // Helper function để parse JaCoCo coverage
 def getCoverageFromReport(String reportPath) {
     try {
-        // Debug: Print file path
+        // Log the file path being processed
         echo "Checking coverage report at: ${reportPath}"
         
-        // Check if file exists
+        // Check if the report file exists
         if (!fileExists(reportPath)) {
             echo "ERROR: Coverage report file not found: ${reportPath}"
             return 0.0
         }
-        
-        // Debug: Check file permissions and content
-        def fileInfo = sh(script: "ls -la '${reportPath}' && head -5 '${reportPath}'", returnStdout: true)
-        echo "File info:\n${fileInfo}"
 
-        // Using Python or awk to parse JaCoCo XML report
+        // Parse JaCoCo XML report using Python or awk fallback
         def coverage = sh(script: """
-            set -e  # Exit on any error
-            
             if command -v python3 > /dev/null; then
                 echo "Using Python3 to parse coverage report..."
                 python3 -c "
@@ -489,13 +483,13 @@ import sys
 import os
 
 report_path = '${reportPath}'
-print(f'Processing file: {report_path}')
+print('Processing file: ' + report_path)
 
 # Check if file exists and is readable
 if not os.path.exists(report_path):
     print('ERROR: File does not exist')
     print('0.00')
-    sys.exit(0)  # Không exit với code 1
+    sys.exit(0)
 
 if not os.access(report_path, os.R_OK):
     print('ERROR: File is not readable')
@@ -503,52 +497,55 @@ if not os.access(report_path, os.R_OK):
     sys.exit(0)
 
 try:
-    # Parse XML
+    # Parse XML document
     tree = ET.parse(report_path)
     root = tree.getroot()
-    print(f'Root element: {root.tag}')
+    print('Root element: ' + root.tag)
     
     total_missed = 0
     total_covered = 0
     counter_count = 0
     
-    # Find all counter với type='LINE'
-    for counter in root.findall('.//counter[@type=\"LINE\"]'):
-        counter_count += 1
-        missed = counter.get('missed', '0')
-        covered = counter.get('covered', '0')
-        print(f'Counter {counter_count}: missed={missed}, covered={covered}')
-        
-        # Ensure values are integers
-        try:
-            total_missed += int(missed)
-            total_covered += int(covered)
-        except ValueError as ve:
-            print(f'ValueError converting values: {ve}')
-            continue
+    # Find all counter elements with type='LINE'
+    # Fix: Use proper XPath syntax
+    counters = root.findall('.//counter')
+    for counter in counters:
+        if counter.get('type') == 'LINE':
+            counter_count += 1
+            missed = counter.get('missed', '0')
+            covered = counter.get('covered', '0')
+            print('Counter ' + str(counter_count) + ': missed=' + missed + ', covered=' + covered)
+            
+            # Ensure values are numeric
+            try:
+                total_missed += int(missed)
+                total_covered += int(covered)
+            except ValueError as ve:
+                print('ValueError converting values: ' + str(ve))
+                continue
     
-    print(f'Total counters found: {counter_count}')
-    print(f'Total missed: {total_missed}, Total covered: {total_covered}')
+    print('Total LINE counters found: ' + str(counter_count))
+    print('Total missed: ' + str(total_missed) + ', Total covered: ' + str(total_covered))
     
     total = total_missed + total_covered
     if total > 0:
-        coverage_percent = (total_covered / total) * 100
-        print(f'Coverage: {coverage_percent:.6f}%')
-        print(f'{coverage_percent:.6f}')
+        coverage_percent = (total_covered * 100.0) / total
+        print('Coverage: ' + str(round(coverage_percent, 2)) + '%')
+        print(str(round(coverage_percent, 2)))
     else:
         print('No coverage data found')
         print('0.00')
         
 except ET.ParseError as pe:
-    print(f'XML Parse Error: {pe}')
+    print('XML Parse Error: ' + str(pe))
     print('0.00')
 except Exception as e:
-    print(f'Unexpected error: {e}')
+    print('Unexpected error: ' + str(e))
     print('0.00')
 "
             else
                 echo "Using awk to parse coverage report..."
-                # Fallback: Sử dụng awk
+                # Fallback: Use awk for parsing
                 awk '
                 BEGIN { 
                     missed = 0; 
@@ -556,30 +553,31 @@ except Exception as e:
                     counter_count = 0;
                     print "Starting awk parsing..."
                 }
-                /<counter type="LINE"/ {
+                # Look for counter elements with type="LINE"
+                /<counter[^>]*type="LINE"/ {
                     counter_count++
                     print "Processing line:", \$0
                     
-                    # Tìm missed attribute
+                    # Extract missed attribute value
                     if (match(\$0, /missed="([0-9]+)"/, arr)) {
                         missed += arr[1]
                         print "Found missed:", arr[1]
                     }
-                    # Tìm covered attribute  
+                    # Extract covered attribute value
                     if (match(\$0, /covered="([0-9]+)"/, arr)) {
                         covered += arr[1]
                         print "Found covered:", arr[1]
                     }
                 }
                 END {
-                    print "Total counters:", counter_count
+                    print "Total LINE counters:", counter_count
                     print "Total missed:", missed, "Total covered:", covered
                     
                     total = missed + covered;
                     if (total > 0) {
-                        coverage_percent = (covered / total) * 100
-                        printf "Coverage: %.6f%%\\n", coverage_percent
-                        printf "%.6f", coverage_percent
+                        coverage_percent = (covered * 100.0) / total
+                        printf "Coverage: %.2f%%\\n", coverage_percent
+                        printf "%.2f", coverage_percent
                     } else {
                         print "No coverage data found"
                         print "0.00"
@@ -589,16 +587,16 @@ except Exception as e:
             fi
         """, returnStdout: true)
 
-        echo "Raw coverage output:\n${coverage}"
+        echo "Raw coverage output:\\n${coverage}"
         
-        // Lấy dòng cuối cùng (là kết quả coverage)
-        def lines = coverage.split('\n')
+        // Extract the last line (coverage result)
+        def lines = coverage.split('\\n')
         def coverageResult = lines[-1].trim()
         
         echo "Extracted coverage result: '${coverageResult}'"
 
-        // Kiểm tra và chuyển đổi kết quả
-        if (coverageResult && coverageResult.matches(/^\d+\.\d+$/)) {
+        // Validate and convert result
+        if (coverageResult && coverageResult.matches(/^\\d+\\.\\d+\$/)) {
             def result = coverageResult.toDouble()
             echo "Final code coverage: ${result}%"
             return result
@@ -610,7 +608,6 @@ except Exception as e:
     } catch (Exception e) {
         echo "Error parsing coverage report: ${e.message}"
         echo "Exception details: ${e.toString()}"
-        e.printStackTrace()
         return 0.0
     }
 }
