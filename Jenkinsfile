@@ -464,92 +464,153 @@ Coverage check failed - pipeline stopped.
 // Helper function để parse JaCoCo coverage
 def getCoverageFromReport(String reportPath) {
     try {
-        // Check if the report file exists
+        // Debug: Print file path
+        echo "Checking coverage report at: ${reportPath}"
+        
+        // Check if file exists
         if (!fileExists(reportPath)) {
-            echo "Coverage report file not found: ${reportPath}"
+            echo "ERROR: Coverage report file not found: ${reportPath}"
             return 0.0
         }
+        
+        // Debug: Check file permissions and content
+        def fileInfo = sh(script: "ls -la '${reportPath}' && head -5 '${reportPath}'", returnStdout: true)
+        echo "File info:\n${fileInfo}"
 
-        // Using Python or awk to parse the JaCoCo XML report
+        // Using Python or awk to parse JaCoCo XML report
         def coverage = sh(script: """
+            set -e  # Exit on any error
+            
             if command -v python3 > /dev/null; then
+                echo "Using Python3 to parse coverage report..."
                 python3 -c "
 import xml.etree.ElementTree as ET
 import sys
+import os
+
+report_path = '${reportPath}'
+print(f'Processing file: {report_path}')
+
+# Check if file exists and is readable
+if not os.path.exists(report_path):
+    print('ERROR: File does not exist')
+    print('0.00')
+    sys.exit(0)  # Không exit với code 1
+
+if not os.access(report_path, os.R_OK):
+    print('ERROR: File is not readable')
+    print('0.00')
+    sys.exit(0)
 
 try:
-    tree = ET.parse('${reportPath}')
+    # Parse XML
+    tree = ET.parse(report_path)
     root = tree.getroot()
+    print(f'Root element: {root.tag}')
+    
     total_missed = 0
     total_covered = 0
+    counter_count = 0
     
-    # Find all counter with type='LINE'
+    # Find all counter với type='LINE'
     for counter in root.findall('.//counter[@type=\"LINE\"]'):
+        counter_count += 1
         missed = counter.get('missed', '0')
         covered = counter.get('covered', '0')
+        print(f'Counter {counter_count}: missed={missed}, covered={covered}')
         
-        # Ensure missed and covered are integers
+        # Ensure values are integers
         try:
             total_missed += int(missed)
             total_covered += int(covered)
-        except ValueError:
+        except ValueError as ve:
+            print(f'ValueError converting values: {ve}')
             continue
+    
+    print(f'Total counters found: {counter_count}')
+    print(f'Total missed: {total_missed}, Total covered: {total_covered}')
     
     total = total_missed + total_covered
     if total > 0:
         coverage_percent = (total_covered / total) * 100
+        print(f'Coverage: {coverage_percent:.6f}%')
         print(f'{coverage_percent:.6f}')
     else:
+        print('No coverage data found')
         print('0.00')
         
-except FileNotFoundError:
+except ET.ParseError as pe:
+    print(f'XML Parse Error: {pe}')
     print('0.00')
-    sys.exit(1)
-except ET.ParseError as e:
-    print('0.00')
-    sys.exit(1)
 except Exception as e:
+    print(f'Unexpected error: {e}')
     print('0.00')
-    sys.exit(1)
 "
             else
-                # Fallback: Using awk
+                echo "Using awk to parse coverage report..."
+                # Fallback: Sử dụng awk
                 awk '
-                BEGIN { missed = 0; covered = 0 }
+                BEGIN { 
+                    missed = 0; 
+                    covered = 0; 
+                    counter_count = 0;
+                    print "Starting awk parsing..."
+                }
                 /<counter type="LINE"/ {
-                    # Find missed attribute
+                    counter_count++
+                    print "Processing line:", \$0
+                    
+                    # Tìm missed attribute
                     if (match(\$0, /missed="([0-9]+)"/, arr)) {
                         missed += arr[1]
+                        print "Found missed:", arr[1]
                     }
-                    # Find covered attribute
+                    # Tìm covered attribute  
                     if (match(\$0, /covered="([0-9]+)"/, arr)) {
                         covered += arr[1]
+                        print "Found covered:", arr[1]
                     }
                 }
                 END {
+                    print "Total counters:", counter_count
+                    print "Total missed:", missed, "Total covered:", covered
+                    
                     total = missed + covered;
                     if (total > 0) {
-                        printf "%.6f", (covered / total) * 100
+                        coverage_percent = (covered / total) * 100
+                        printf "Coverage: %.6f%%\\n", coverage_percent
+                        printf "%.6f", coverage_percent
                     } else {
+                        print "No coverage data found"
                         print "0.00"
                     }
                 }
-                ' "${reportPath}" 2>/dev/null || echo "0.00"
+                ' "${reportPath}"
             fi
-        """, returnStdout: true).trim()
+        """, returnStdout: true)
 
-        // Check if it's a valid number and convert to double
-        if (coverage && coverage.isNumber()) {
-            def result = coverage.toDouble()
-            echo "Code coverage: ${result}%"
+        echo "Raw coverage output:\n${coverage}"
+        
+        // Lấy dòng cuối cùng (là kết quả coverage)
+        def lines = coverage.split('\n')
+        def coverageResult = lines[-1].trim()
+        
+        echo "Extracted coverage result: '${coverageResult}'"
+
+        // Kiểm tra và chuyển đổi kết quả
+        if (coverageResult && coverageResult.matches(/^\d+\.\d+$/)) {
+            def result = coverageResult.toDouble()
+            echo "Final code coverage: ${result}%"
             return result
         } else {
-            echo "Invalid coverage result: ${coverage}"
+            echo "Invalid coverage result format: '${coverageResult}'"
             return 0.0
         }
         
     } catch (Exception e) {
         echo "Error parsing coverage report: ${e.message}"
+        echo "Exception details: ${e.toString()}"
+        e.printStackTrace()
         return 0.0
     }
 }
