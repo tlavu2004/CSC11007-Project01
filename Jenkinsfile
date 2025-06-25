@@ -18,7 +18,7 @@ pipeline {
     }
 
     environment {
-        COVERAGE_THRESHOLD = '30.0'
+        COVERAGE_THRESHOLD = '70.0'
         MAVEN_OPTS = '-Xmx1024m'
     }
 
