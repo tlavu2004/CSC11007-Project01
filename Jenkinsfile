@@ -116,6 +116,11 @@ pipeline {
         }
 
         stage('Check Code Coverage') {
+            when {
+                expression {
+                    return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
+                }
+            }
             steps {
                 script {
                     // Helper function to get coverage from report
