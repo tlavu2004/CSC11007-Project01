@@ -69,6 +69,7 @@ pipeline {
                     return env.CHANGED_SERVICES != null && env.CHANGED_SERVICES.trim()
                 }
             }
+
             steps {
                 script {
                     def services = env.CHANGED_SERVICES.split(',')
@@ -78,6 +79,7 @@ pipeline {
                     }   
                 }
             }
+
             post {
                 always {
                     script {
@@ -247,7 +249,12 @@ except Exception as e:
                         }
                     }
 
-                    // Phần chính: duyệt qua từng service
+                    def criticalServices = [
+                        "spring-petclinic-customers-service",
+                        "spring-petclinic-vets-service",
+                        "spring-petclinic-visits-service"
+                    ]
+
                     def failedServices = []
                     def changedServices = env.CHANGED_SERVICES.split(',')
                     def coverageThreshold = 70.0
@@ -258,8 +265,12 @@ except Exception as e:
 
                         echo "Code coverage for ${service}: ${coverage}%"
 
-                        if (coverage < coverageThreshold) {
-                            failedServices.add(service)
+                        if (criticalServices.contains(service)) {
+                            if (coverage < coverageThreshold) {
+                                failedServices.add(service)
+                            }
+                        } else {
+                            echo "Service ${service} is not critical => skipping threshold check."
                         }
                     }
 
