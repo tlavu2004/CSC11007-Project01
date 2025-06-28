@@ -55,3 +55,4 @@ public class VisitsServiceClient {
         this.hostname = hostname;
     }
 }
+// EOF
