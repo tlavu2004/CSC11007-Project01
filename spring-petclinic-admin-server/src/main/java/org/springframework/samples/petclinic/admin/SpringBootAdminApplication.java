@@ -28,4 +28,3 @@ public class SpringBootAdminApplication {
         SpringApplication.run(SpringBootAdminApplication.class, args);
     }
 }
-// EOF
